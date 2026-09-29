@@ -185,8 +185,10 @@ test('packed npm package runs via the consumer project ai:check script', () => {
     withPackage.devDependencies = { ...withPackage.devDependencies, ...target.devDependencies };
     writeFileSync(pkgPath, JSON.stringify(withPackage));
     const localCli = join(dir, 'node_modules/.bin/ai-code');
-    const init = spawnSync(localCli, ['init'], { cwd: dir, encoding: 'utf8', env: npmEnv, timeout: 15000 });
+    const init = spawnSync(localCli, ['init', '--scenarios', 'admin,mobile-h5'], { cwd: dir, encoding: 'utf8', env: npmEnv, timeout: 15000 });
     assert.equal(init.status, 0, init.stderr);
+    assert.ok(existsSync(join(dir, '.cursor/skills/ai-code-admin/SKILL.md')));
+    assert.ok(existsSync(join(dir, '.cursor/skills/ai-code-mobile-h5/SKILL.md')));
     const check = spawnSync('npm', ['run', 'ai:check', '--', '--json'], { cwd: dir, encoding: 'utf8', env: npmEnv });
     assert.equal(check.status, 0, check.stderr);
     assert.match(check.stdout, /"status": "passed"/);

@@ -1,8 +1,9 @@
-import { existsSync, lstatSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { cursorFiles } from './adapters/cursor.mjs';
+import { cursorFiles, scenarioSkillPath } from './adapters/cursor.mjs';
+import { normalizeScenarios, scenarioChoices } from './scenarios.mjs';
 export const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const configPath = '.ai-code/config.json';
@@ -71,7 +72,12 @@ export function readConfig(root) {
   }
   const entries = Object.entries(config.managed);
   if (!entries.length || entries.some(([path, digest]) => !path.startsWith('.cursor/') || path.includes('..') || !/^[a-f0-9]{64}$/.test(digest))) throw new Error('受控文件记录不完整');
+  config.scenarios = normalizeScenarios(config.scenarios);
   return config;
+}
+
+export function unselectedScenarioFiles(config, files) {
+  return scenarioChoices.map(choice => scenarioSkillPath(choice.id)).filter(path => path in config.managed && !(path in files));
 }
 
 export function drift(root, config) {
@@ -89,20 +95,24 @@ function installPackage(root, manager) {
   if (result.error || result.status !== 0) throw new Error(`安装 ${pkg.name} 失败：${result.error?.message ?? result.status}`);
 }
 
-export function initProject(root, { install = true } = {}) {
+export function initProject(root, { install = true, scenarios } = {}) {
+  const selected = scenarios === undefined ? undefined : normalizeScenarios(scenarios);
   let project = readPackage(root);
   verifyStack(project);
   const configFile = join(root, configPath);
-  const files = cursorFiles();
   guardPath(root, configPath);
-  for (const path of Object.keys(files)) guardPath(root, path);
   if (existsSync(configFile)) {
     const config = readConfig(root);
+    if (selected !== undefined && JSON.stringify(selected) !== JSON.stringify(config.scenarios)) {
+      throw new Error(`项目已接入；变更场景请运行 ai-code sync --scenarios ${selected.join(',') || 'none'}`);
+    }
     if (drift(root, config).length) throw new Error('受控文件已修改或缺失；请先处理冲突，再运行 sync');
     if (project.scripts['ai:check'] !== 'ai-code check') throw new Error('现有 ai:check 与本包冲突');
     if (config.packageVersion !== pkg.version) throw new Error('包版本已更新，请运行 ai-code sync');
     return { unchanged: true, config };
   }
+  const files = cursorFiles(selected);
+  for (const path of Object.keys(files)) guardPath(root, path);
   if (project.scripts['ai:check']) throw new Error('项目已有 ai:check 脚本，不会覆盖');
   for (const path of Object.keys(files)) if (existsSync(join(root, path))) throw new Error(`项目已有 ${path}，不会覆盖`);
   const manager = managerFor(root, project);
@@ -114,7 +124,7 @@ export function initProject(root, { install = true } = {}) {
     project = readPackage(root);
     if (project.scripts['ai:check']) throw new Error('安装后发现 ai:check 冲突，未写入规则');
   }
-  const config = { schemaVersion: 1, packageVersion: pkg.version, adapter: 'cursor', mode: 'observe', manager, scripts, managed: Object.fromEntries(Object.entries(files).map(([path, content]) => [path, hash(content)])) };
+  const config = { schemaVersion: 1, packageVersion: pkg.version, adapter: 'cursor', mode: 'observe', manager, scenarios: selected ?? [], scripts, managed: Object.fromEntries(Object.entries(files).map(([path, content]) => [path, hash(content)])) };
   for (const [path, content] of Object.entries(files)) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), content);
@@ -127,11 +137,13 @@ export function initProject(root, { install = true } = {}) {
   return { unchanged: false, config, installed: install };
 }
 
-export function syncProject(root) {
+export function syncProject(root, { scenarios } = {}) {
   const config = readConfig(root);
+  const selected = scenarios === undefined ? config.scenarios : normalizeScenarios(scenarios);
   const changed = drift(root, config).filter(path => existsSync(join(root, path)));
   if (changed.length) throw new Error(`受控文件有本地修改：${changed.join(', ')}`);
-  const files = cursorFiles();
+  const files = cursorFiles(selected);
+  const removed = unselectedScenarioFiles(config, files);
   for (const path of Object.keys(files)) {
     guardPath(root, path);
     if (!(path in config.managed) && existsSync(join(root, path))) throw new Error(`新规则与项目文件冲突：${path}`);
@@ -141,6 +153,11 @@ export function syncProject(root) {
     writeFileSync(join(root, path), content);
     config.managed[path] = hash(content);
   }
+  for (const path of removed) {
+    if (existsSync(join(root, path))) unlinkSync(join(root, path));
+    delete config.managed[path];
+  }
+  config.scenarios = selected;
   config.packageVersion = pkg.version;
   writeFileSync(join(root, configPath), JSON.stringify(config, null, 2) + '\n');
   return config;

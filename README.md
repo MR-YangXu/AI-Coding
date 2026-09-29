@@ -1,6 +1,6 @@
 # AI Code
 
-`@agent-xy/ai-code` 是面向 Vue 3 + Vite + TypeScript 的 AI 编码规范 npm 包。为 Cursor 提供一份短规则和七个按任务加载的技能，并把项目现有质量检查统一为 `npm run ai:check`。源码与项目配置是技术事实来源；不需要填写任务档案或维护项目事实状态机。
+`@agent-xy/ai-code` 是面向 Vue 3 + Vite + TypeScript 的 AI 编码规范 npm 包。为 Cursor 提供一份短规则、七个通用技能及按项目选择的场景补充，并把项目现有质量检查统一为 `npm run ai:check`。源码与项目配置是技术事实来源；不需要填写任务档案或维护项目事实状态机。
 
 ## 一键接入
 
@@ -13,7 +13,42 @@ npm run ai:check
 
 `init` 根据项目的 `packageManager` 字段或锁文件选择 npm、pnpm 或 yarn，安装确切版本的开发依赖，生成 `.cursor/rules/ai-code.mdc`、`.cursor/skills/ai-code-*/SKILL.md`、`.ai-code/config.json` 并添加 `ai:check` 脚本。对已经安装包的项目不会重复安装；离线验收可使用 `init --no-install`，之后仍需手动安装依赖才能运行 `npm run ai:check`。已有同名用户文件或脚本不会被覆盖。
 
-Cursor 的基础规则默认加载；页面、组件、Hook、API、共享状态、路由和国际化技能按任务加载。包中的 `content/` 是工具无关的唯一规范来源；`src/adapters/` 用于工具投影，后续可以在不改项目质量命令的情况下增加 Codex 适配器。当前未提供 Codex 投影。
+Cursor 的基础规则默认加载；页面、组件、Hook、API、共享状态、路由和国际化技能按任务加载。CLI 决定项目安装哪些场景补充，AI 再根据当前任务选择相关技能。包中的 `content/` 是工具无关的唯一规范来源；`src/adapters/` 用于工具投影，后续可以在不改项目质量命令的情况下增加 Codex 适配器。当前未提供 Codex 投影。
+
+## 按项目选择场景
+
+首次在交互终端执行 `init` 时，可以输入编号选择场景，多个编号用逗号分隔，直接回车只安装通用规则。非交互环境、CI 或使用 `--json` 时不会询问，未指定场景则默认通用；已接入项目再次 `init` 会保留已有选择。
+
+| 场景参数 | 安装内容 |
+| --- | --- |
+| `none` | 基础规则 + 七个通用技能 |
+| `admin` | 通用内容 + 管理后台技能：复杂查询、表格、批量操作、权限与编辑流程 |
+| `mobile-h5` | 通用内容 + 移动端 H5 技能：触摸、安全区域、软键盘、滚动、弱网与资源加载 |
+| `admin,mobile-h5` | 通用内容 + 两类场景补充；按当前页面判断适用范围 |
+
+也可以直接指定，适用于脚本和自动化：
+
+```bash
+# 新项目接入管理后台场景
+npx @agent-xy/ai-code init --scenarios admin
+
+# 已接入项目改为同时启用后台与移动端
+npx @agent-xy/ai-code sync --scenarios admin,mobile-h5
+
+# 恢复为仅通用规则
+npx @agent-xy/ai-code sync --scenarios none
+
+# 查看选择与规则一致性
+npx @agent-xy/ai-code status
+```
+
+选择保存在 `.ai-code/config.json` 的 `scenarios` 数组中；`--scenarios` 替换完整选择，`sync` 省略该参数则沿用已保存的值。没有此字段的旧配置按通用场景读取，下次同步时补齐。未知场景或无效参数会报错，不能静默退回默认。
+
+同步会更新基础规则中的场景入口，并只安装所选场景的技能。取消选择时，只删除受控清单中未经手改的对应 `SKILL.md`，保留同目录用户文件；任何受控文件被修改、路径为符号链接或新文件与用户文件冲突时，先报错，不切换场景。项目类型由开发者选择，不通过组件库或目录名自动推断。
+
+场景补充没有独立的质量命令，也不会自动引入移动端适配库、UI 库或新的构建框架；继续使用项目已有检查。查看全部命令可运行 `npx @agent-xy/ai-code --help`。
+
+## 项目补充约定
 
 团队可自行创建 `.ai-code/profile.md`，只记录源码无法表达的推荐入口与禁止效仿的遗留实现，例如：
 
@@ -39,7 +74,7 @@ npm run ai:check -- --json
 npx @agent-xy/ai-code sync
 ```
 
-- `status` 仅读取项目，不运行检查。`check` 执行配置的质量命令并检查受控文件与包版本。
+- `status` 仅读取项目，不运行检查。`status` 和 `check` 都展示场景选择并检查与受控文件是否一致；`check` 还执行配置的质量命令并检查包版本。
 - 默认 `observe`（观察）模式：缺失检查显示 `missing`，不阻断；已有命令失败、规则漂移和无效配置仍阻断。
 - 修改 `.ai-code/config.json` 的 `mode` 为 `enforce`（阻断）后，缺少 lint、typecheck 或 build 也会阻断；test 暂不列为所有项目的强制项。
 - npm 包升级后执行 `npx @agent-xy/ai-code sync`；有手工改动的受控文件会拒绝覆盖。团队定制内容请放入其他 Cursor 文件。`status` 和 `check` 支持 `--json`。
