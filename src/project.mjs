@@ -107,7 +107,7 @@ export function initProject(root, { install = true } = {}) {
   for (const path of Object.keys(files)) if (existsSync(join(root, path))) throw new Error(`项目已有 ${path}，不会覆盖`);
   const manager = managerFor(root, project);
   const scripts = Object.fromEntries(Object.entries(aliases).map(([key, names]) => [key, names.find(name => safeQualityScript(key, project.scripts[name]) && !project.scripts[name].includes('ai-code check')) ?? null]));
-  const installedPath = join(root, 'node_modules', '@agent', 'ai-code', 'package.json');
+  const installedPath = join(root, 'node_modules', pkg.name, 'package.json');
   const locallyInstalled = existsSync(installedPath) && readJson(installedPath).version === pkg.version;
   if (install && !locallyInstalled) {
     installPackage(root, manager);

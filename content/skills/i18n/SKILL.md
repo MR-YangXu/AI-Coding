@@ -1,6 +1,6 @@
 ---
 name: ai-code-i18n
-description: 用于修改 Vue 前端多语言文案、语言切换、回退和本地化格式。
+description: 用于新增、修改或审查 Vue 前端多语言文案、语言切换、回退和本地化格式。
 ---
 
 # 国际化

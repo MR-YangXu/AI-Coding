@@ -1,6 +1,6 @@
 ---
 name: ai-code-hook
-description: 用于创建、修改或提取 Vue 3 composable，尤其是判断是否抽取以及副作用生命周期。
+description: 用于创建、修改、提取或审查 Vue 3 composable（组合式函数），尤其是判断是否抽取以及副作用生命周期。
 ---
 
 # Hook
@@ -20,7 +20,7 @@ description: 用于创建、修改或提取 Vue 3 composable，尤其是判断�
 
 ## 副作用
 
-- 一个异步流程一个 loading，并在结束时恢复。结果可能乱序时使用项目已有的取消或序号机制。
+- 一个异步流程一个 loading，并由该流程的有效执行负责恢复；涉及请求竞态时遵循 API 技能，旧执行结束不能提前关闭当前执行的 loading。
 - 监听器、定时器、观察器、Object URL 与未决请求必须有对应清理；只在组件 `setup` 同步调用，以保证生命周期有效。
 - 不要仅为缩短页面文件而抽取。
 

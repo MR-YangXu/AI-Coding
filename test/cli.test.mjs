@@ -34,6 +34,20 @@ test('init detects actual scripts, creates scoped Cursor assets and is repeatabl
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('team profile survives init and sync and is discoverable from generated rules', () => {
+  const dir = fixture();
+  try {
+    mkdirSync(join(dir, '.ai-code'));
+    const profile = join(dir, '.ai-code/profile.md');
+    writeFileSync(profile, '# 团队意图\n\n请求统一走 src/api/modules/。\n');
+    assert.equal(run(dir, 'init', '--no-install').status, 0);
+    const rule = readFileSync(join(dir, '.cursor/rules/ai-code.mdc'), 'utf8');
+    assert.match(rule, /\.ai-code\/profile\.md/);
+    assert.equal(run(dir, 'sync').status, 0);
+    assert.equal(readFileSync(profile, 'utf8'), '# 团队意图\n\n请求统一走 src/api/modules/。\n');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('invalid stack and existing user rule are not overwritten', () => {
   const dir = fixture();
   try {
@@ -156,21 +170,22 @@ test('sync installs newly added skill only if its destination is free', () => {
 test('packed npm package runs via the consumer project ai:check script', () => {
   const dir = fixture({ lint: 'node -e "process.exit(0)"', build: 'node -e "process.exit(0)"' });
   try {
-    const npmEnv = { ...process.env, npm_config_cache: join(dir, '.npm-cache') };
+    const npmEnv = { ...process.env, npm_config_cache: join(dir, '.npm-cache'), npm_config_offline: 'true' };
     const pkgPath = join(dir, 'package.json');
     const target = JSON.parse(readFileSync(pkgPath, 'utf8'));
     writeFileSync(pkgPath, JSON.stringify({ name: target.name, version: target.version, scripts: target.scripts }));
     const packed = spawnSync('npm', ['pack', '--pack-destination', dir, '--json'], { cwd: resolve('.'), encoding: 'utf8', env: npmEnv });
     assert.equal(packed.status, 0, packed.stderr);
-    const tarball = join(dir, JSON.parse(packed.stdout)[0].filename);
-    const installed = spawnSync('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--save-dev', tarball], { cwd: dir, encoding: 'utf8', env: npmEnv });
+    const tarballName = JSON.parse(packed.stdout)[0].filename.replace(/^@([^/]+)\//, '$1-');
+    const tarball = join(dir, tarballName);
+    const installed = spawnSync('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--save-dev', tarball], { cwd: dir, encoding: 'utf8', env: npmEnv, timeout: 15000 });
     assert.equal(installed.status, 0, installed.stderr);
     const withPackage = JSON.parse(readFileSync(pkgPath, 'utf8'));
     withPackage.dependencies = target.dependencies;
     withPackage.devDependencies = { ...withPackage.devDependencies, ...target.devDependencies };
     writeFileSync(pkgPath, JSON.stringify(withPackage));
     const localCli = join(dir, 'node_modules/.bin/ai-code');
-    const init = spawnSync(localCli, ['init'], { cwd: dir, encoding: 'utf8' });
+    const init = spawnSync(localCli, ['init'], { cwd: dir, encoding: 'utf8', env: npmEnv, timeout: 15000 });
     assert.equal(init.status, 0, init.stderr);
     const check = spawnSync('npm', ['run', 'ai:check', '--', '--json'], { cwd: dir, encoding: 'utf8', env: npmEnv });
     assert.equal(check.status, 0, check.stderr);
