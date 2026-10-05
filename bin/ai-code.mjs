@@ -81,6 +81,12 @@ async function main() {
   else {
     console.log(`项目场景：${describeScenarios(report.scenarios)}`);
     for (const [name, result] of Object.entries(report.checks)) console.log(`${name}: ${result.status}${result.script ? ` (${result.script})` : ''}`);
+    const constants = report.checks.constants;
+    if (constants?.total) {
+      console.log(`常量诊断：${constants.total} 条；确定违规 ${constants.violations} 条；疑似重复 ${constants.warnings} 条`);
+      for (const item of constants.diagnostics) console.log(`${item.filePath}:${item.line}:${item.column} ${item.ruleId} ${item.message}${item.related ? `（原定义 ${item.related.filePath}:${item.related.line}）` : ''}`);
+      if (constants.truncated) console.log(`另有 ${constants.total - constants.diagnostics.length} 条诊断未展示；处理已列问题后重新检查`);
+    }
     for (const result of Object.values(report.checks)) if (result.status === 'failed' && result.output) console.error(result.output);
     for (const issue of report.issues) console.error(issue);
   }

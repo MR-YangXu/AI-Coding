@@ -16,6 +16,10 @@
   "scripts": {
     "test": "node --test"
   },
+  "dependencies": {
+    "@vue/compiler-sfc": "3.5.25",
+    "typescript": "5.9.3"
+  },
   "engines": {
     "node": ">=18"
   },

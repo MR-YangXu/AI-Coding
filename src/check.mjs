@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { readConfig, readPackage, drift, required, safeQualityScript, hash, pkg, unselectedScenarioFiles } from './project.mjs';
 import { cursorFiles } from './adapters/cursor.mjs';
+import { checkConstants } from './constants/check.mjs';
 
 export function checkProject(root, { execute = true } = {}) {
   const config = readConfig(root);
@@ -24,5 +25,7 @@ export function checkProject(root, { execute = true } = {}) {
     checks[kind] = { status: result.status === 0 && !result.error ? 'passed' : 'failed', script: name, output, exitCode: result.status };
     if (checks[kind].status === 'failed') issues.push(`检查失败：${kind}（${result.error?.message ?? result.status}）`);
   }
+  checks.constants = checkConstants(root, config.constants, { mode: config.mode, execute });
+  if (['failed', 'incomplete'].includes(checks.constants.status)) issues.push(`常量检查${checks.constants.status === 'failed' ? '失败' : '未完成'}${checks.constants.issues.length ? `：${checks.constants.issues.join('；')}` : ''}`);
   return { ok: issues.length === 0, mode: config.mode, scenarios: config.scenarios, checks, issues };
 }

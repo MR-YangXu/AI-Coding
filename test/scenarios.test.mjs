@@ -12,7 +12,7 @@ const configPath = '.ai-code/config.json';
 const rulePath = '.cursor/rules/ai-code.mdc';
 const adminPath = '.cursor/skills/ai-code-admin/SKILL.md';
 const mobilePath = '.cursor/skills/ai-code-mobile-h5/SKILL.md';
-const commonSkills = ['api', 'component', 'hook', 'i18n', 'route', 'state', 'view'].map(name => `ai-code-${name}`);
+const commonSkills = ['api', 'component', 'constant', 'hook', 'i18n', 'route', 'state', 'view'].map(name => `ai-code-${name}`);
 
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), 'ai-code-scenarios-'));
@@ -95,7 +95,7 @@ test('sync preserves choices, switches scenarios and keeps user files in the sam
     assert.equal(run(dir, 'sync', '--scenarios', 'none').status, 0);
     assert.equal(existsSync(join(dir, mobilePath)), false);
     assert.deepEqual(readConfig(dir).scenarios, []);
-    assert.equal(Object.keys(readConfig(dir).managed).length, 8);
+    assert.equal(Object.keys(readConfig(dir).managed).length, 9);
     assert.equal(run(dir, 'check', '--json').status, 0);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

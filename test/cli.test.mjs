@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, symlinkSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const cli = resolve('bin/ai-code.mjs');
@@ -155,7 +155,7 @@ test('sync installs newly added skill only if its destination is free', () => {
     assert.equal(run(dir, 'init', '--no-install').status, 0);
     const configFile = join(dir, '.ai-code/config.json');
     const config = JSON.parse(readFileSync(configFile, 'utf8'));
-    const skillPath = '.cursor/skills/ai-code-i18n/SKILL.md';
+    const skillPath = '.cursor/skills/ai-code-constant/SKILL.md';
     delete config.managed[skillPath];
     config.packageVersion = '0.0.1';
     writeFileSync(configFile, JSON.stringify(config));
@@ -170,7 +170,8 @@ test('sync installs newly added skill only if its destination is free', () => {
 test('packed npm package runs via the consumer project ai:check script', () => {
   const dir = fixture({ lint: 'node -e "process.exit(0)"', build: 'node -e "process.exit(0)"' });
   try {
-    const npmEnv = { ...process.env, npm_config_cache: join(dir, '.npm-cache'), npm_config_offline: 'true' };
+    // npm install/ci primes the dependency cache; reuse it when installing the packed package offline.
+    const npmEnv = { ...process.env, npm_config_offline: 'true' };
     const pkgPath = join(dir, 'package.json');
     const target = JSON.parse(readFileSync(pkgPath, 'utf8'));
     writeFileSync(pkgPath, JSON.stringify({ name: target.name, version: target.version, scripts: target.scripts }));
@@ -189,9 +190,22 @@ test('packed npm package runs via the consumer project ai:check script', () => {
     assert.equal(init.status, 0, init.stderr);
     assert.ok(existsSync(join(dir, '.cursor/skills/ai-code-admin/SKILL.md')));
     assert.ok(existsSync(join(dir, '.cursor/skills/ai-code-mobile-h5/SKILL.md')));
+    assert.ok(existsSync(join(dir, '.cursor/skills/ai-code-constant/SKILL.md')));
+    const templates = join(dir, 'node_modules/@agent-xy/ai-code/content/templates/constants');
+    for (const [from, to] of [['common.ts', 'src/constants/common.ts'], ['index.ts', 'src/constants/index.ts'], ['business.constants.ts', 'src/views/orders/constants.ts'], ['usage.vue', 'src/views/orders/index.vue']]) {
+      mkdirSync(dirname(join(dir, to)), { recursive: true });
+      copyFileSync(join(templates, from), join(dir, to));
+    }
+    writeFileSync(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@/*': ['src/*'] } } }));
+    const configPath = join(dir, '.ai-code/config.json');
+    const config = JSON.parse(readFileSync(configPath));
+    config.constants = JSON.parse(readFileSync(join(templates, 'config.json'))).constants;
+    writeFileSync(configPath, JSON.stringify(config));
     const check = spawnSync('npm', ['run', 'ai:check', '--', '--json'], { cwd: dir, encoding: 'utf8', env: npmEnv });
     assert.equal(check.status, 0, check.stderr);
     assert.match(check.stdout, /"status": "passed"/);
+    const direct = spawnSync(localCli, ['check', '--json'], { cwd: dir, encoding: 'utf8', env: npmEnv });
+    assert.equal(JSON.parse(direct.stdout).checks.constants.status, 'passed', direct.stdout);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
