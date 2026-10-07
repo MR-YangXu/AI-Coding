@@ -1,8 +1,8 @@
-import { createInterface } from 'node:readline';
+import { askCheckbox } from './prompt.mjs';
 
 export const scenarioChoices = [
-  { id: 'admin', label: '管理后台' },
-  { id: 'mobile-h5', label: '移动端 H5' },
+  { id: 'admin', label: '管理后台', hint: '搜索、表格、批量操作、权限与编辑流程' },
+  { id: 'mobile-h5', label: '移动端 H5', hint: '触摸、安全区域、软键盘、滚动恢复与弱网' },
 ];
 
 export function normalizeScenarios(value = []) {
@@ -23,26 +23,11 @@ export function describeScenarios(value) {
   return ['通用 Vue', ...scenarioChoices.filter(choice => selected.includes(choice.id)).map(choice => `${choice.label}（${choice.id}）`)].join(' + ');
 }
 
-export async function promptScenarios({ input = process.stdin, output = process.stdout } = {}) {
-  output.write('选择项目场景（通用规则始终安装）：\n  0. 仅通用 Vue（默认）\n');
-  scenarioChoices.forEach((choice, index) => output.write(`  ${index + 1}. ${choice.label}（${choice.id}）\n`));
-  output.write('请输入编号，多个用逗号分隔，例如 1,2；直接回车选择通用：');
-  const reader = createInterface({ input, crlfDelay: Infinity });
-  try {
-    for await (const line of reader) {
-      const answer = line.trim();
-      if (!answer || answer === '0') return [];
-      try {
-        return parseScenarios(answer.split(',').map(item => {
-          const value = item.trim();
-          return scenarioChoices.find((_, index) => String(index + 1) === value)?.id ?? value;
-        }).join(','));
-      } catch (error) {
-        output.write(`${error.message}\n请重新选择：`);
-      }
-    }
-    throw new Error('场景选择已取消，未初始化项目');
-  } finally {
-    reader.close();
-  }
+export async function promptScenarios(streams) {
+  const selected = await askCheckbox({
+    message: '选择项目场景（通用规则始终安装，空格勾选，回车确认）',
+    choices: scenarioChoices.map(choice => ({ name: `${choice.label}（${choice.id}）`, value: choice.id, description: choice.hint })),
+    instructions: false,
+  }, streams);
+  return normalizeScenarios(selected);
 }

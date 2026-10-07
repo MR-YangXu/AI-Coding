@@ -5,11 +5,12 @@ import { initProject, syncProject } from '../src/project.mjs';
 import { checkProject } from '../src/check.mjs';
 import { inspectQuality } from '../src/quality.mjs';
 import { describeScenarios, parseScenarios, promptScenarios } from '../src/scenarios.mjs';
+import { parseProfile, profilePath, promptProfile } from '../src/profile.mjs';
 
 const [command, ...args] = process.argv.slice(2);
 const json = args.includes('--json');
 const usage = `用法：
-  ai-code init [--scenarios admin,mobile-h5|none] [--no-install]
+  ai-code init [--scenarios admin,mobile-h5|none] [--profile vue|admin|mobile-h5|none] [--no-install]
   ai-code sync [--scenarios admin,mobile-h5|none]
   ai-code status
   ai-code check
@@ -17,13 +18,17 @@ const usage = `用法：
 
 所有命令支持 --project <目录> 和 --json；使用 --help 查看帮助。
 场景：admin（管理后台）、mobile-h5（移动端 H5），逗号分隔可多选；none 仅安装通用规则。
-首次 init 在交互终端中提供场景选择；非交互、CI 或 --json 默认通用。sync 未指定场景时沿用已保存选择。
+档案：--profile 按模板创建 ${profilePath}，已存在时不覆盖；之后由项目维护，sync 不会改动它。
+首次 init 在交互终端中提供场景和档案选择；非交互、CI 或 --json 默认通用场景且不创建档案。sync 未指定场景时沿用已保存选择。
 `;
 
 function parseOptions(optionArgs) {
   const allowed = new Map([['--project', 'value'], ['--json', 'flag']]);
   if (command === 'init' || command === 'sync') allowed.set('--scenarios', 'value');
-  if (command === 'init') allowed.set('--no-install', 'flag');
+  if (command === 'init') {
+    allowed.set('--no-install', 'flag');
+    allowed.set('--profile', 'value');
+  }
   const options = {};
   for (let index = 0; index < optionArgs.length; index++) {
     const raw = optionArgs[index];
@@ -53,12 +58,13 @@ async function main() {
   const options = parseOptions(command === 'quality' ? args.slice(1) : args);
   const root = resolve(options['--project'] ?? '.');
   let scenarios = options['--scenarios'] === undefined ? undefined : parseScenarios(options['--scenarios']);
-  if (command === 'init' && scenarios === undefined && !json && !process.env.CI && process.stdin.isTTY && process.stdout.isTTY && !existsSync(join(root, '.ai-code/config.json'))) {
-    scenarios = await promptScenarios();
-  }
+  let profile = options['--profile'] === undefined ? null : parseProfile(options['--profile']);
+  const interactive = command === 'init' && !json && !process.env.CI && process.stdin.isTTY && process.stdout.isTTY && !existsSync(join(root, '.ai-code/config.json'));
+  if (interactive && scenarios === undefined) scenarios = await promptScenarios();
+  if (interactive && options['--profile'] === undefined && !existsSync(join(root, profilePath))) profile = await promptProfile(scenarios ?? []);
   let report;
   switch (command) {
-    case 'init': report = initProject(root, { install: !options['--no-install'], scenarios }); break;
+    case 'init': report = initProject(root, { install: !options['--no-install'], scenarios, profile }); break;
     case 'sync': report = syncProject(root, { scenarios }); break;
     case 'status': report = checkProject(root, { execute: false }); break;
     case 'check': report = checkProject(root); break;
@@ -70,6 +76,8 @@ async function main() {
   else if (command === 'init') {
     console.log(report.unchanged ? '已接入，无需修改' : '已接入 Cursor 规则和质量检查（观察模式）');
     console.log(`项目场景：${describeScenarios(report.config.scenarios)}`);
+    if (report.profile?.created) console.log(`项目档案：已按「${report.profile.template}」模板创建 ${report.profile.path}，请替换其中的待填项并删除示例`);
+    else if (report.profile) console.log(`项目档案：${report.profile.path} 已存在，未覆盖`);
   }
   else if (command === 'sync') console.log(`受控规则已同步；项目场景：${describeScenarios(report.scenarios)}`);
   else if (command === 'quality') {

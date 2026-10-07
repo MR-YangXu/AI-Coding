@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { PassThrough } from 'node:stream';
 import { promptScenarios } from '../src/scenarios.mjs';
+import { promptProfile } from '../src/profile.mjs';
 
 const cli = resolve('bin/ai-code.mjs');
 const configPath = '.ai-code/config.json';
@@ -240,24 +241,106 @@ test('invalid saved scenarios fail without modifying the project', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('interactive selection accepts a default, multiple choices and correction of invalid input', async () => {
-  for (const [answer, expected] of [['\n', []], ['1,2\n', ['admin', 'mobile-h5']], ['9\n2\n', ['mobile-h5']]]) {
+const KEY = { enter: '\r', space: ' ', down: '\u001B[B', ctrlC: '\u0003' };
+
+async function type(input, keys) {
+  for (const key of keys) {
+    await new Promise(resolve => setTimeout(resolve, 15));
+    input.write(key);
+  }
+}
+
+test('interactive selection accepts an empty default and multiple checked scenarios', async () => {
+  for (const [keys, expected] of [
+    [[KEY.enter], []],
+    [[KEY.space, KEY.down, KEY.space, KEY.enter], ['admin', 'mobile-h5']],
+    [[KEY.down, KEY.space, KEY.enter], ['mobile-h5']],
+  ]) {
     const input = new PassThrough();
     const output = new PassThrough();
     let displayed = '';
     output.on('data', chunk => { displayed += chunk; });
     const selection = promptScenarios({ input, output });
-    input.end(answer);
+    await type(input, keys);
     assert.deepEqual(await selection, expected);
     assert.match(displayed, /通用规则始终安装/);
-    if (answer.startsWith('9')) assert.match(displayed, /请重新选择/);
   }
 });
 
-test('closing interactive input cancels rather than choosing a scenario', async () => {
-  const input = new PassThrough();
-  const output = new PassThrough();
-  const selection = promptScenarios({ input, output });
-  input.end();
-  await assert.rejects(selection, /已取消/);
+test('closing input or pressing ctrl-c cancels rather than choosing a scenario', async () => {
+  for (const close of [input => input.end(), input => input.write(KEY.ctrlC)]) {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    output.resume();
+    const selection = promptScenarios({ input, output });
+    await new Promise(resolve => setTimeout(resolve, 15));
+    close(input);
+    await assert.rejects(selection, /已取消/);
+  }
+});
+
+test('profile prompt suggests the template matching the chosen scenario and allows skipping', async () => {
+  for (const [scenarios, keys, expected] of [
+    [['admin'], [KEY.enter], 'admin'],
+    [['mobile-h5'], [KEY.enter], 'mobile-h5'],
+    [[], [KEY.enter], 'vue'],
+    [[], [KEY.down, KEY.down, KEY.down, KEY.enter], null],
+  ]) {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let displayed = '';
+    output.on('data', chunk => { displayed += chunk; });
+    const selection = promptProfile(scenarios, { input, output });
+    await type(input, keys);
+    assert.equal(await selection, expected);
+    assert.match(displayed, /\.ai-code\/profile\.md/);
+  }
+});
+
+test('init creates the chosen profile template once and never overwrites or syncs it', () => {
+  const dir = fixture();
+  try {
+    const created = run(dir, 'init', '--no-install', '--scenarios', 'admin', '--profile', 'admin', '--json');
+    assert.equal(created.status, 0, created.stderr || created.stdout);
+    assert.deepEqual(JSON.parse(created.stdout).profile, { path: '.ai-code/profile.md', template: 'admin', created: true });
+    const profile = join(dir, '.ai-code/profile.md');
+    assert.equal(readFileSync(profile, 'utf8'), readFileSync(resolve('content/templates/profile.admin.md'), 'utf8'));
+    assert.equal('.ai-code/profile.md' in readConfig(dir).managed, false);
+
+    writeFileSync(profile, '# 团队填写后的档案\n');
+    assert.equal(run(dir, 'sync', '--scenarios', 'mobile-h5').status, 0);
+    assert.equal(readFileSync(profile, 'utf8'), '# 团队填写后的档案\n');
+    assert.equal(run(dir, 'check', '--json').status, 0);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('init without --profile or with none leaves the profile to the team', () => {
+  for (const flags of [[], ['--profile', 'none']]) {
+    const dir = fixture();
+    try {
+      const result = run(dir, 'init', '--no-install', '--json', ...flags);
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      assert.equal(JSON.parse(result.stdout).profile, null);
+      assert.equal(existsSync(join(dir, '.ai-code/profile.md')), false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+test('init keeps an existing profile when a template is requested and rejects unknown templates', () => {
+  const dir = fixture();
+  try {
+    mkdirSync(join(dir, '.ai-code'), { recursive: true });
+    writeFileSync(join(dir, '.ai-code/profile.md'), '# 已有档案\n');
+    const kept = run(dir, 'init', '--no-install', '--profile', 'vue', '--json');
+    assert.equal(kept.status, 0, kept.stderr || kept.stdout);
+    assert.deepEqual(JSON.parse(kept.stdout).profile, { path: '.ai-code/profile.md', template: 'vue', created: false });
+    assert.equal(readFileSync(join(dir, '.ai-code/profile.md'), 'utf8'), '# 已有档案\n');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+  const other = fixture();
+  try {
+    const rejected = run(other, 'init', '--no-install', '--profile', 'h5', '--json');
+    assert.equal(rejected.status, 1);
+    assert.match(JSON.parse(rejected.stdout).issues[0], /--profile 仅支持/);
+    assert.equal(existsSync(join(other, '.ai-code')), false);
+  } finally { rmSync(other, { recursive: true, force: true }); }
 });

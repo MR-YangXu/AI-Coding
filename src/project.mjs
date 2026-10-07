@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { cursorFiles, scenarioSkillPath } from './adapters/cursor.mjs';
 import { normalizeScenarios, scenarioChoices } from './scenarios.mjs';
+import { writeProfile } from './profile.mjs';
 export const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const configPath = '.ai-code/config.json';
@@ -95,7 +96,7 @@ function installPackage(root, manager) {
   if (result.error || result.status !== 0) throw new Error(`安装 ${pkg.name} 失败：${result.error?.message ?? result.status}`);
 }
 
-export function initProject(root, { install = true, scenarios } = {}) {
+export function initProject(root, { install = true, scenarios, profile = null } = {}) {
   const selected = scenarios === undefined ? undefined : normalizeScenarios(scenarios);
   let project = readPackage(root);
   verifyStack(project);
@@ -134,7 +135,8 @@ export function initProject(root, { install = true, scenarios } = {}) {
   project.scripts['ai:check'] = 'ai-code check';
   if (!install) project.devDependencies = { ...project.devDependencies, [pkg.name]: pkg.version };
   writeFileSync(join(root, 'package.json'), JSON.stringify(project, null, 2) + '\n');
-  return { unchanged: false, config, installed: install };
+  const profileResult = profile ? writeProfile(root, profile) : null;
+  return { unchanged: false, config, installed: install, profile: profileResult };
 }
 
 export function syncProject(root, { scenarios } = {}) {

@@ -17,6 +17,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@inquirer/prompts": "^7.10.1",
     "@vue/compiler-sfc": "3.5.25",
     "typescript": "5.9.3"
   },
