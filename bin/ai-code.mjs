@@ -61,7 +61,7 @@ async function main() {
   let profile = options['--profile'] === undefined ? null : parseProfile(options['--profile']);
   const interactive = command === 'init' && !json && !process.env.CI && process.stdin.isTTY && process.stdout.isTTY && !existsSync(join(root, '.ai-code/config.json'));
   if (interactive && scenarios === undefined) scenarios = await promptScenarios();
-  if (interactive && options['--profile'] === undefined && !existsSync(join(root, profilePath))) profile = await promptProfile(scenarios ?? []);
+  if (interactive && options['--profile'] === undefined && scenarios?.length && !existsSync(join(root, profilePath))) profile = await promptProfile(scenarios);
   let report;
   switch (command) {
     case 'init': report = initProject(root, { install: !options['--no-install'], scenarios, profile }); break;

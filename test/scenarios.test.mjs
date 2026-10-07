@@ -250,11 +250,12 @@ async function type(input, keys) {
   }
 }
 
-test('interactive selection accepts an empty default and multiple checked scenarios', async () => {
+test('interactive selection offers an explicit opt-out before any scenario', async () => {
   for (const [keys, expected] of [
     [[KEY.enter], []],
-    [[KEY.space, KEY.down, KEY.space, KEY.enter], ['admin', 'mobile-h5']],
-    [[KEY.down, KEY.space, KEY.enter], ['mobile-h5']],
+    [[KEY.down, KEY.enter], ['admin']],
+    [[KEY.down, KEY.down, KEY.enter], ['mobile-h5']],
+    [[KEY.down, KEY.down, KEY.down, KEY.enter], ['admin', 'mobile-h5']],
   ]) {
     const input = new PassThrough();
     const output = new PassThrough();
@@ -263,7 +264,7 @@ test('interactive selection accepts an empty default and multiple checked scenar
     const selection = promptScenarios({ input, output });
     await type(input, keys);
     assert.deepEqual(await selection, expected);
-    assert.match(displayed, /通用规则始终安装/);
+    assert.match(displayed, /不接入后台或 H5/);
   }
 });
 
@@ -279,12 +280,12 @@ test('closing input or pressing ctrl-c cancels rather than choosing a scenario',
   }
 });
 
-test('profile prompt suggests the template matching the chosen scenario and allows skipping', async () => {
-  for (const [scenarios, keys, expected] of [
-    [['admin'], [KEY.enter], 'admin'],
-    [['mobile-h5'], [KEY.enter], 'mobile-h5'],
-    [[], [KEY.enter], 'vue'],
-    [[], [KEY.down, KEY.down, KEY.down, KEY.enter], null],
+test('profile prompt only offers templates for the scenarios actually selected', async () => {
+  for (const [scenarios, keys, expected, hidden] of [
+    [['admin'], [KEY.enter], 'admin', /移动端 H5|通用 Vue/],
+    [['admin'], [KEY.down, KEY.enter], null, /移动端 H5/],
+    [['mobile-h5'], [KEY.enter], 'mobile-h5', /管理后台|通用 Vue/],
+    [['admin', 'mobile-h5'], [KEY.down, KEY.enter], 'mobile-h5', /通用 Vue/],
   ]) {
     const input = new PassThrough();
     const output = new PassThrough();
@@ -293,8 +294,9 @@ test('profile prompt suggests the template matching the chosen scenario and allo
     const selection = promptProfile(scenarios, { input, output });
     await type(input, keys);
     assert.equal(await selection, expected);
-    assert.match(displayed, /\.ai-code\/profile\.md/);
+    assert.doesNotMatch(displayed, hidden);
   }
+  assert.equal(await promptProfile([], { input: new PassThrough(), output: new PassThrough() }), null);
 });
 
 test('init creates the chosen profile template once and never overwrites or syncs it', () => {

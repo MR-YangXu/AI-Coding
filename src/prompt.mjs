@@ -1,4 +1,4 @@
-import { checkbox, select } from '@inquirer/prompts';
+import { select } from '@inquirer/prompts';
 
 export const cancelMessage = '已取消，未修改项目';
 
@@ -21,10 +21,6 @@ function ask(prompt, config, { input = process.stdin, output = process.stdout } 
     if (error?.name === 'ExitPromptError' || error?.name === 'AbortPromptError') throw new Error(cancelMessage);
     throw error;
   });
-}
-
-export function askCheckbox(config, streams) {
-  return ask(checkbox, config, streams);
 }
 
 export function askSelect(config, streams) {

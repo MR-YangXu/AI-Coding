@@ -41,14 +41,19 @@ export function writeProfile(root, id) {
   return { path: profilePath, template: id, created: true };
 }
 
+export function profileChoicesFor(scenarios = []) {
+  return profileChoices.filter(choice => scenarios.includes(choice.id));
+}
+
 export async function promptProfile(scenarios, streams) {
-  const suggested = defaultProfileFor(scenarios);
+  const choices = profileChoicesFor(scenarios);
+  if (!choices.length) return null;
   return askSelect({
-    message: `创建项目档案 ${profilePath}？模板只含待填项，需要按本仓库源码填写后才生效`,
-    default: suggested,
+    message: `是否创建 ${profilePath}？`,
+    default: defaultProfileFor(scenarios),
     choices: [
-      ...profileChoices.map(choice => ({ name: `${choice.label}模板${choice.id === suggested ? '（与所选场景匹配）' : ''}`, value: choice.id })),
-      { name: '暂不创建，之后手动维护', value: null },
+      ...choices.map(choice => ({ name: `使用${choice.label}模板`, value: choice.id })),
+      { name: '暂不创建', value: null },
     ],
   }, streams);
 }
