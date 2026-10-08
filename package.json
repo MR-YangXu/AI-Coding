@@ -1,6 +1,6 @@
 {
   "name": "@agent-xy/ai-code",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Vue 3 AI coding rules and verifiable quality checks",
   "type": "module",
   "bin": {
