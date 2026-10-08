@@ -72,7 +72,8 @@ export function readConfig(root) {
     throw new Error('质量命令映射无效');
   }
   const entries = Object.entries(config.managed);
-  if (!entries.length || entries.some(([path, digest]) => !path.startsWith('.cursor/') || path.includes('..') || !/^[a-f0-9]{64}$/.test(digest))) throw new Error('受控文件记录不完整');
+  const managedPathOk = path => path === '.ai-code/README.md' || path.startsWith('.cursor/');
+  if (!entries.length || entries.some(([path, digest]) => !managedPathOk(path) || path.includes('..') || !/^[a-f0-9]{64}$/.test(digest))) throw new Error('受控文件记录不完整');
   config.scenarios = normalizeScenarios(config.scenarios);
   return config;
 }

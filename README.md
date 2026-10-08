@@ -11,7 +11,7 @@ npx @agent-xy/ai-code init
 npm run ai:check
 ```
 
-`init` 根据项目的 `packageManager` 字段或锁文件选择 npm、pnpm 或 yarn，安装确切版本的开发依赖，生成 `.cursor/rules/ai-code.mdc`、`.cursor/skills/ai-code-*/SKILL.md`、`.ai-code/config.json` 并添加 `ai:check` 脚本。对已经安装包的项目不会重复安装；离线验收可使用 `init --no-install`，之后仍需手动安装依赖才能运行 `npm run ai:check`。已有同名用户文件或脚本不会被覆盖。
+`init` 根据项目的 `packageManager` 字段或锁文件选择 npm、pnpm 或 yarn，安装确切版本的开发依赖，生成 `.cursor/rules/ai-code.mdc`、`.cursor/skills/ai-code-*/SKILL.md`、`.ai-code/config.json`、`.ai-code/README.md` 并添加 `ai:check` 脚本。`.ai-code/README.md` 是给接入项目的人看的使用说明，`sync` 会覆盖它。对已经安装包的项目不会重复安装；离线验收可使用 `init --no-install`，之后仍需手动安装依赖才能运行 `npm run ai:check`。已有同名用户文件或脚本不会被覆盖。
 
 Cursor 的基础规则默认加载；页面、组件、常量与字典、Hook、API、共享状态、路由和国际化技能按任务加载。CLI 决定项目安装哪些场景补充，AI 再根据当前任务选择相关技能。包中的 `content/` 是工具无关的唯一规范来源；`src/adapters/` 用于工具投影，后续可以在不改项目质量命令的情况下增加 Codex 适配器。当前未提供 Codex 投影。
 
@@ -127,7 +127,7 @@ npx @agent-xy/ai-code sync
 - `status` 仅读取项目，不运行检查。`status` 和 `check` 都展示场景选择并检查与受控文件是否一致；`check` 还执行配置的质量命令并检查包版本。
 - 默认 `observe`（观察）模式：缺失检查显示 `missing`，不阻断；已有命令失败、规则漂移和无效配置仍阻断。
 - 修改 `.ai-code/config.json` 的 `mode` 为 `enforce`（阻断）后，缺少 lint、typecheck 或 build 也会阻断；test 暂不列为所有项目的强制项。
-- npm 包升级后执行 `npx @agent-xy/ai-code sync`；有手工改动的受控文件会拒绝覆盖。团队定制内容请放入其他 Cursor 文件。`status` 和 `check` 支持 `--json`。
+- npm 包升级后执行 `npx @agent-xy/ai-code sync`。它更新受控规则和 `.ai-code/README.md`，不改 `.ai-code/profile.md`。有手工改动的受控文件会拒绝覆盖。团队约定写在档案里。`status` 和 `check` 支持 `--json`。
 
 建议先在项目内执行 `status` 了解缺口，再为当前项目补齐合适的检查脚本。规范无法独自验证业务需求；关键交互还需要对应测试与人工代码审查。
 

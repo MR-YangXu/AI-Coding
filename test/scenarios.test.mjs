@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { PassThrough } from 'node:stream';
 import { promptScenarios } from '../src/scenarios.mjs';
 import { promptProfile } from '../src/profile.mjs';
+import { hash } from '../src/project.mjs';
 
 const cli = resolve('bin/ai-code.mjs');
 const configPath = '.ai-code/config.json';
@@ -96,7 +97,7 @@ test('sync preserves choices, switches scenarios and keeps user files in the sam
     assert.equal(run(dir, 'sync', '--scenarios', 'none').status, 0);
     assert.equal(existsSync(join(dir, mobilePath)), false);
     assert.deepEqual(readConfig(dir).scenarios, []);
-    assert.equal(Object.keys(readConfig(dir).managed).length, 9);
+    assert.equal(Object.keys(readConfig(dir).managed).length, 10);
     assert.equal(run(dir, 'check', '--json').status, 0);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -297,6 +298,25 @@ test('profile prompt only offers templates for the scenarios actually selected',
     assert.doesNotMatch(displayed, hidden);
   }
   assert.equal(await promptProfile([], { input: new PassThrough(), output: new PassThrough() }), null);
+});
+
+test('sync refreshes the managed handbook and leaves the project profile unchanged', () => {
+  const dir = fixture();
+  try {
+    assert.equal(run(dir, 'init', '--no-install', '--scenarios', 'admin', '--profile', 'admin').status, 0);
+    const readme = join(dir, '.ai-code/README.md');
+    const profile = join(dir, '.ai-code/profile.md');
+    assert.equal(readFileSync(readme, 'utf8'), readFileSync(resolve('content/handbook.md'), 'utf8'));
+    const profileBefore = readFileSync(profile, 'utf8');
+    const config = readConfig(dir);
+    const stale = '# 旧手册\n';
+    writeFileSync(readme, stale);
+    config.managed['.ai-code/README.md'] = hash(stale);
+    writeFileSync(join(dir, configPath), JSON.stringify(config));
+    assert.equal(run(dir, 'sync').status, 0);
+    assert.equal(readFileSync(readme, 'utf8'), readFileSync(resolve('content/handbook.md'), 'utf8'));
+    assert.equal(readFileSync(profile, 'utf8'), profileBefore);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('init creates the chosen profile template once and never overwrites or syncs it', () => {

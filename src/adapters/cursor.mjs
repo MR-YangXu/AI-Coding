@@ -21,5 +21,6 @@ export function cursorFiles(scenarios = []) {
   for (const id of selected) {
     files[scenarioSkillPath(id)] = readFileSync(join(contentRoot, 'scenarios', id, 'SKILL.md'), 'utf8');
   }
+  files['.ai-code/README.md'] = readFileSync(join(contentRoot, 'handbook.md'), 'utf8');
   return files;
 }
