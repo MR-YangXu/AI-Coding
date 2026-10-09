@@ -155,7 +155,7 @@ test('sync installs newly added skill only if its destination is free', () => {
     assert.equal(run(dir, 'init', '--no-install').status, 0);
     const configFile = join(dir, '.ai-code/config.json');
     const config = JSON.parse(readFileSync(configFile, 'utf8'));
-    const skillPath = '.cursor/skills/ai-code-constant/SKILL.md';
+    const skillPath = '.cursor/skills/ai-code-type/SKILL.md';
     delete config.managed[skillPath];
     config.packageVersion = '0.0.1';
     writeFileSync(configFile, JSON.stringify(config));
