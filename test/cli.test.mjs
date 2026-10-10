@@ -15,6 +15,7 @@ function fixture(scripts = { lint: 'node -e "process.exit(0)"', 'type-check': 'n
 }
 
 function run(dir, ...args) {
+  if (args[0] === 'init' && !existsSync(join(dir, '.ai-code/config.json'))) args.push('--framework', 'vue3', '--language', 'ts');
   return spawnSync(process.execPath, [cli, ...args, '--project', dir], { cwd: dir, encoding: 'utf8' });
 }
 
@@ -48,14 +49,15 @@ test('team profile survives init and sync and is discoverable from generated rul
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('invalid stack and existing user rule are not overwritten', () => {
+test('stack choice is independent of dependencies and user rules are protected', () => {
   const dir = fixture();
   try {
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
     delete pkg.devDependencies.typescript;
     writeFileSync(join(dir, 'package.json'), JSON.stringify(pkg));
-    assert.notEqual(run(dir, 'init', '--no-install').status, 0);
-    assert.equal(existsSync(join(dir, '.ai-code/config.json')), false);
+    assert.equal(run(dir, 'init', '--no-install').status, 0);
+    rmSync(join(dir, '.ai-code'), { recursive: true });
+    rmSync(join(dir, '.cursor'), { recursive: true });
     pkg.devDependencies.typescript = '^5.0.0';
     writeFileSync(join(dir, 'package.json'), JSON.stringify(pkg));
     mkdirSync(join(dir, '.cursor/rules'), { recursive: true });
@@ -98,7 +100,7 @@ test('an existing failed check blocks even in observe and JSON contains no stray
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('sync refuses hand-edited managed files and preserves unmanaged rules', () => {
+test('sync overwrites hand-edited managed files and preserves unmanaged rules', () => {
   const dir = fixture();
   try {
     assert.equal(run(dir, 'init', '--no-install').status, 0);
@@ -106,8 +108,10 @@ test('sync refuses hand-edited managed files and preserves unmanaged rules', () 
     const other = join(dir, '.cursor/rules/team.mdc');
     writeFileSync(other, 'team rule');
     writeFileSync(rule, 'local edit');
-    assert.notEqual(run(dir, 'sync').status, 0);
-    assert.equal(readFileSync(rule, 'utf8'), 'local edit');
+    assert.equal(run(dir, 'status').status, 1);
+    assert.equal(run(dir, 'sync').status, 0);
+    assert.notEqual(readFileSync(rule, 'utf8'), 'local edit');
+    assert.equal(run(dir, 'status').status, 0);
     assert.equal(readFileSync(other, 'utf8'), 'team rule');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -186,7 +190,7 @@ test('packed npm package runs via the consumer project ai:check script', () => {
     withPackage.devDependencies = { ...withPackage.devDependencies, ...target.devDependencies };
     writeFileSync(pkgPath, JSON.stringify(withPackage));
     const localCli = join(dir, 'node_modules/.bin/ai-code');
-    const init = spawnSync(localCli, ['init', '--scenarios', 'admin,mobile-h5'], { cwd: dir, encoding: 'utf8', env: npmEnv, timeout: 15000 });
+    const init = spawnSync(localCli, ['init', '--framework', 'vue3', '--language', 'ts', '--scenarios', 'admin,mobile-h5'], { cwd: dir, encoding: 'utf8', env: npmEnv, timeout: 15000 });
     assert.equal(init.status, 0, init.stderr);
     assert.ok(existsSync(join(dir, '.cursor/skills/ai-code-admin/SKILL.md')));
     assert.ok(existsSync(join(dir, '.cursor/skills/ai-code-mobile-h5/SKILL.md')));
@@ -206,6 +210,27 @@ test('packed npm package runs via the consumer project ai:check script', () => {
     assert.match(check.stdout, /"status": "passed"/);
     const direct = spawnSync(localCli, ['check', '--json'], { cwd: dir, encoding: 'utf8', env: npmEnv });
     assert.equal(JSON.parse(direct.stdout).checks.constants.status, 'passed', direct.stdout);
+    for (const [framework, language] of [['vue2', 'js'], ['vue3', 'js'], ['vue3', 'ts'], ['react', 'js'], ['react', 'ts']]) {
+      const consumer = join(dir, `${framework}-${language}`);
+      mkdirSync(consumer);
+      writeFileSync(join(consumer, 'package.json'), JSON.stringify({ name: 'consumer', version: '1.0.0', scripts: target.scripts }));
+      const initialize = spawnSync(localCli, ['init', '--project', consumer, '--no-install', '--framework', framework, '--language', language, '--profile', 'base', '--json'], { cwd: consumer, env: npmEnv, encoding: 'utf8' });
+      assert.equal(initialize.status, 0, initialize.stdout || initialize.stderr);
+      const variant = join(templates, `${framework}-${language}`);
+      const componentExt = framework === 'react' ? `${language}x` : 'vue';
+      for (const [from, to] of [[`common.${language}`, `src/constants/common.${language}`], [`index.${language}`, `src/constants/index.${language}`], [`business.constants.${language}`, `src/views/orders/constants.${language}`], [`usage.${componentExt}`, `src/views/orders/index.${componentExt}`]]) {
+        mkdirSync(dirname(join(consumer, to)), { recursive: true });
+        copyFileSync(join(variant, from), join(consumer, to));
+      }
+      writeFileSync(join(consumer, language === 'js' ? 'jsconfig.json' : 'tsconfig.json'), JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@/*': ['src/*'] } } }));
+      const configuration = JSON.parse(readFileSync(join(consumer, '.ai-code/config.json')));
+      configuration.constants = JSON.parse(readFileSync(join(variant, 'config.json'))).constants;
+      writeFileSync(join(consumer, '.ai-code/config.json'), JSON.stringify(configuration));
+      const checked = spawnSync(localCli, ['check', '--project', consumer, '--json'], { cwd: consumer, env: npmEnv, encoding: 'utf8' });
+      assert.equal(checked.status, 0, checked.stdout || checked.stderr);
+      assert.equal(JSON.parse(checked.stdout).checks.constants.status, 'passed', checked.stdout);
+      assert.deepEqual(JSON.parse(checked.stdout).stack, { framework, language });
+    }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

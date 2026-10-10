@@ -10,8 +10,9 @@ const theme = {
 // 管道或测试里的输入流结束时 inquirer 会一直等待，这里把它变成取消。
 function ask(prompt, config, { input = process.stdin, output = process.stdout } = {}) {
   const controller = new AbortController();
+  let cancel;
   const closed = new Promise((_, reject) => {
-    const cancel = () => reject(new Error(cancelMessage));
+    cancel = () => reject(new Error(cancelMessage));
     input.once('end', cancel);
     input.once('close', cancel);
   });
@@ -20,6 +21,9 @@ function ask(prompt, config, { input = process.stdin, output = process.stdout } 
     controller.abort();
     if (error?.name === 'ExitPromptError' || error?.name === 'AbortPromptError') throw new Error(cancelMessage);
     throw error;
+  }).finally(() => {
+    input.removeListener('end', cancel);
+    input.removeListener('close', cancel);
   });
 }
 

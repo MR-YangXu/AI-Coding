@@ -79,7 +79,7 @@ export function validateConstants(config) {
   for (const module of config.modules) {
     const keys = new Map();
     for (const binding of module.bindings) {
-      object(binding, ['definition', 'fields', 'options', 'template'], '常量使用绑定');
+      object(binding, ['definition', 'fields', 'options', 'template', 'jsx'], '常量使用绑定');
       const definition = definitions.get(binding.definition);
       if (!definition || !['common', module.id].includes(definition.owner)) throw new Error(`${module.id} 只能绑定公共或本业务定义：${binding.definition}`);
       const bindings = [];
@@ -95,6 +95,14 @@ export function validateConstants(config) {
           object(item, ['component', 'prop', 'model'], '模板绑定');
           if (typeof item.component !== 'string' || !item.component || typeof item.prop !== 'string' || !item.prop || (item.model !== undefined && (typeof item.model !== 'string' || !item.model))) throw new Error('模板绑定必须声明组件、属性及可选的 v-model 表达式');
           bindings.push(`template:${item.component}:${item.prop}:${item.model ?? ''}`);
+        }
+      }
+      if (binding.jsx !== undefined) {
+        if (!Array.isArray(binding.jsx)) throw new Error('jsx 必须是数组');
+        for (const item of binding.jsx) {
+          object(item, ['component', 'prop'], 'JSX 属性绑定');
+          if (typeof item.component !== 'string' || !item.component.trim() || typeof item.prop !== 'string' || !item.prop.trim()) throw new Error('JSX 绑定必须声明 component 和 prop');
+          bindings.push(`jsx:${item.component}:${item.prop}`);
         }
       }
       if (!bindings.length) throw new Error(`${module.id} 的绑定未声明字段、选项或模板属性`);

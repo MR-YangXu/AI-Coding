@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { validateConstants, sourceFiles, inModule } from './config.mjs';
 import { loadSources, unwrap, nameOf, parserTools } from './source.mjs';
+import { legacyStack, normalizeStack } from '../stack.mjs';
 
 let ts;
 
@@ -17,15 +18,10 @@ function declaration(symbol) {
   return symbol?.declarations?.find(node => ts.isVariableDeclaration(node) || ts.isEnumDeclaration(node));
 }
 
-function members(node) {
-  if (ts.isEnumDeclaration(node)) return node.members;
-  const value = unwrap(node.initializer);
-  return value && ts.isObjectLiteralExpression(value) ? value.properties : undefined;
-}
-
 function access(node) {
   node = unwrap(node);
   if (ts.isIdentifier(node)) return node.text;
+  if (node.kind === ts.SyntaxKind.ThisKeyword) return 'this';
   if (ts.isPropertyAccessExpression(node)) {
     const parent = access(node.expression);
     return parent && `${parent}.${node.name.text}`;
@@ -37,18 +33,27 @@ function access(node) {
   return undefined;
 }
 
-export function checkConstants(root, input, { mode = 'observe', execute = true } = {}) {
+export function checkConstants(root, input, { mode = 'observe', execute = true, stack = legacyStack } = {}) {
   if (input === undefined) return { status: 'not_configured', total: 0, diagnostics: [], issues: [] };
   const report = { status: 'incomplete', files: [], total: 0, violations: 0, warnings: 0, diagnostics: [], truncated: false, issues: [] };
   try {
+    normalizeStack(stack);
     const config = validateConstants(input);
     if (!execute) return { ...report, status: 'available' };
     ts = parserTools().ts;
     const files = [...new Set([...sourceFiles(root, config), ...(config.common ? [config.common.entry, ...config.common.files] : [])])].sort();
     report.files = files;
     const roots = [...files, ...config.definitions.map(item => item.file), ...(config.common ? [config.common.entry, ...config.common.files] : [])];
-    const sources = loadSources(root, roots, config);
+    const sources = loadSources(root, roots, config, stack);
     const { checker, symbol, exported, location, program } = sources;
+    function members(node) {
+      if (ts.isEnumDeclaration(node)) return node.members;
+      let value = unwrap(node.initializer);
+      if (value && ts.isCallExpression(value) && ts.isPropertyAccessExpression(value.expression)
+        && value.expression.expression.getText() === 'Object' && value.expression.name.text === 'freeze'
+        && !checker.getSymbolAtLocation(value.expression.expression)?.declarations?.length && value.arguments.length === 1) value = unwrap(value.arguments[0]);
+      return value && ts.isObjectLiteralExpression(value) ? value.properties : undefined;
+    }
     const definitions = new Map();
     const bySymbol = new Map();
     const dictionaries = new Map();
@@ -102,21 +107,30 @@ export function checkConstants(root, input, { mode = 'observe', execute = true }
       }
     }
 
-    function constantObject(input, seen = new Set()) {
+    function referencedObject(input, registry, seen = new Set()) {
       const node = unwrap(input);
       if (!node) return undefined;
+      if (seen.has(node)) return undefined;
+      seen.add(node);
+      const component = sources.componentValue(node);
+      if (component && component !== node) return referencedObject(component, registry, seen);
       const value = symbol(node);
-      if (bySymbol.has(value)) return bySymbol.get(value);
+      if (registry.has(value)) return registry.get(value);
       if (!value || seen.has(value)) return undefined;
       seen.add(value);
       const declared = declaration(value);
-      if (declared && ts.isVariableDeclaration(declared) && declared.initializer && declared.parent.flags & ts.NodeFlags.Const) return constantObject(declared.initializer, seen);
+      if (declared && ts.isVariableDeclaration(declared) && declared.initializer && declared.parent.flags & ts.NodeFlags.Const) return referencedObject(declared.initializer, registry, seen);
       return undefined;
     }
+    const constantObject = input => referencedObject(input, bySymbol);
 
     function evaluate(input, seen = new Set()) {
       const node = unwrap(input);
       if (!node) return { kind: 'dynamic' };
+      if (seen.has(node)) return { kind: 'dynamic' };
+      seen.add(node);
+      const component = sources.componentValue(node);
+      if (component && component !== node) return evaluate(component, seen);
       const direct = literal(node);
       if (direct !== undefined) return { kind: 'literal', value: direct };
       if ([ts.SyntaxKind.TrueKeyword, ts.SyntaxKind.FalseKeyword].includes(node.kind)) return { kind: 'literal', value: node.kind === ts.SyntaxKind.TrueKeyword };
@@ -143,8 +157,7 @@ export function checkConstants(root, input, { mode = 'observe', execute = true }
       if (ts.isConditionalExpression(node)) { checkValue(node.whenTrue, definition); checkValue(node.whenFalse, definition); return; }
       if (ts.isBinaryExpression(node) && [ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.AmpersandAmpersandToken].includes(node.operatorToken.kind)) { checkValue(node.left, definition); checkValue(node.right, definition); return; }
       if (ts.isCallExpression(node)) {
-        const imported = checker.getSymbolAtLocation(node.expression)?.declarations?.find(item => ts.isImportSpecifier(item));
-        const name = imported ? nameOf(imported.propertyName ?? imported.name) : nameOf(node.expression);
+        const name = sources.importedName(node.expression, 'vue');
         if (['ref', 'shallowRef'].includes(name) && node.arguments.length) checkValue(node.arguments[0], definition);
         return;
       }
@@ -194,16 +207,43 @@ export function checkConstants(root, input, { mode = 'observe', execute = true }
       const source = program.getSourceFile(document.virtual);
       const modules = config.modules.filter(module => inModule(file, module));
       const bindings = modules.flatMap(module => module.bindings.map(binding => ({ ...binding, definition: definitions.get(binding.definition) })));
+      const stateSetters = new Map();
+      function stateName(call) {
+        const hook = sources.importedName(call.expression, 'react');
+        if (['useState', 'useReducer'].includes(hook) && ts.isVariableDeclaration(call.parent) && ts.isArrayBindingPattern(call.parent.name)) return nameOf(call.parent.name.elements[0]?.name);
+        return stateSetters.get(symbol(call.expression));
+      }
       function unique(candidates, label) {
         const values = [...new Set(candidates)];
         if (values.length > 1) throw new Error(`${file} 的 ${label} 绑定到多个业务定义`);
         return values[0];
       }
       function field(node) {
+        if (sources.templateLocal(node)) return undefined;
         let path = access(node) ?? nameOf(node);
         if (!path) return undefined;
+        if (path.startsWith('this.')) path = path.slice(5);
         if (path.endsWith('.value')) path = path.slice(0, -6);
-        return unique(bindings.filter(binding => binding.fields?.some(name => name === path || (!name.includes('.') && path.endsWith('.' + name)))).map(binding => binding.definition), path);
+        const paths = new Set([path]);
+        // 对象初始化中的 status 同样可匹配 query.status 等明确的字段路径。
+        let owner = node.parent;
+        let nested = path;
+        while (owner && (ts.isPropertyAssignment(owner) || ts.isShorthandPropertyAssignment(owner)) && ts.isObjectLiteralExpression(owner.parent)) {
+          owner = owner.parent.parent;
+          if ((ts.isPropertyAssignment(owner) || ts.isVariableDeclaration(owner)) && nameOf(owner.name)) {
+            nested = `${nameOf(owner.name)}.${nested}`;
+            paths.add(nested);
+          } else break;
+        }
+        if (stack.framework === 'react') {
+          for (let parent = node.parent; parent && !ts.isSourceFile(parent); parent = parent.parent) {
+            if (ts.isCallExpression(parent)) {
+              const state = stateName(parent);
+              if (state) { paths.add(`${state}.${nested}`); break; }
+            }
+          }
+        }
+        return unique(bindings.filter(binding => binding.fields?.some(name => [...paths].some(candidate => name === candidate || (!name.includes('.') && candidate.endsWith('.' + name))))).map(binding => binding.definition), path);
       }
       function option(node) {
         let current = node.parent;
@@ -224,7 +264,58 @@ export function checkConstants(root, input, { mode = 'observe', execute = true }
         if (declared?.initializer && !seen.has(declared)) { seen.add(declared); arrayValues(declared.initializer, definition, seen); }
       }
       const relevant = [...definitions.values()];
+      const setters = new Map();
+      if (stack.framework === 'react') {
+        function collect(node) {
+          if (ts.isVariableDeclaration(node) && ts.isArrayBindingPattern(node.name) && node.initializer && ts.isCallExpression(unwrap(node.initializer))) {
+            const call = unwrap(node.initializer);
+            if (sources.importedName(call.expression, 'react') === 'useState') {
+              const [state, setter] = node.name.elements;
+              if (state && ts.isBindingElement(state) && ts.isIdentifier(state.name) && setter && ts.isBindingElement(setter) && ts.isIdentifier(setter.name)) {
+                stateSetters.set(symbol(setter.name), state.name.text);
+                const definition = field(state.name);
+                if (definition) setters.set(symbol(setter.name), definition);
+              }
+            }
+          }
+          ts.forEachChild(node, collect);
+        }
+        collect(source);
+      }
+      function checkStateValue(input, definition) {
+        const node = unwrap(input);
+        if (!node) return;
+        if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
+          if (!ts.isBlock(node.body)) { checkValue(node.body, definition); return; }
+          function returns(child) {
+            if (ts.isReturnStatement(child) && child.expression) checkValue(child.expression, definition);
+            else if (!ts.isFunctionLike(child)) ts.forEachChild(child, returns);
+          }
+          ts.forEachChild(node.body, returns);
+        } else checkValue(node, definition);
+      }
       function visit(node) {
+        if (stack.framework === 'react') {
+          if (ts.isVariableDeclaration(node) && ts.isArrayBindingPattern(node.name) && node.initializer && ts.isCallExpression(unwrap(node.initializer))) {
+            const call = unwrap(node.initializer);
+            const state = node.name.elements[0];
+            if (state && ts.isBindingElement(state) && sources.importedName(call.expression, 'react') === 'useState') {
+              const definition = field(state.name);
+              if (definition) checkStateValue(call.arguments[0], definition);
+            }
+          }
+          if (ts.isCallExpression(node)) {
+            const definition = setters.get(symbol(node.expression));
+            if (definition) checkStateValue(node.arguments[0], definition);
+          }
+          if (ts.isJsxAttribute(node) && node.initializer) {
+            const element = node.parent.parent;
+            const component = element.tagName.getText(source);
+            const prop = node.name.getText(source);
+            const definition = unique(bindings.filter(binding => binding.jsx?.some(item => item.component === component && item.prop === prop)).map(binding => binding.definition), `${component}.${prop}`);
+            if (definition) checkValue(ts.isJsxExpression(node.initializer) ? node.initializer.expression : node.initializer, definition);
+          }
+        }
         if (ts.isVariableDeclaration(node) || ts.isEnumDeclaration(node)) {
           const declaredSymbol = symbol(node.name);
           const registered = bySymbol.has(declaredSymbol) || dictionaries.has(declaredSymbol);
@@ -267,7 +358,7 @@ export function checkConstants(root, input, { mode = 'observe', execute = true }
           if (definition) arrayValues(node.expression.expression, definition);
         }
         if (ts.isElementAccessExpression(node)) {
-          const definition = dictionaries.get(symbol(node.expression));
+          const definition = referencedObject(node.expression, dictionaries);
           if (definition) checkValue(node.argumentExpression, definition);
         }
         if (ts.isImportDeclaration(node) && node.importClause) {

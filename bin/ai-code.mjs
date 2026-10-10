@@ -6,12 +6,13 @@ import { checkProject } from '../src/check.mjs';
 import { inspectQuality } from '../src/quality.mjs';
 import { describeScenarios, parseScenarios, promptScenarios } from '../src/scenarios.mjs';
 import { parseProfile, profilePath, promptProfile } from '../src/profile.mjs';
+import { promptStack, describeStack } from '../src/stack.mjs';
 
 const [command, ...args] = process.argv.slice(2);
 const json = args.includes('--json');
 const usage = `用法：
-  ai-code init [--scenarios admin,mobile-h5|none] [--profile vue|admin|mobile-h5|none] [--no-install]
-  ai-code sync [--scenarios admin,mobile-h5|none]
+  ai-code init [--framework vue2|vue3|react] [--language js|ts] [--scenarios admin,mobile-h5|none] [--profile base|vue|admin|mobile-h5|none] [--no-install]
+  ai-code sync [--framework vue2|vue3|react] [--language js|ts] [--scenarios admin,mobile-h5|none]
   ai-code status
   ai-code check
   ai-code quality inspect
@@ -19,12 +20,15 @@ const usage = `用法：
 所有命令支持 --project <目录> 和 --json；使用 --help 查看帮助。
 场景：admin（管理后台）、mobile-h5（移动端 H5），逗号分隔可多选；none 仅安装通用规则。
 档案：--profile 按模板创建 ${profilePath}，已存在时不覆盖；之后由项目维护，sync 不会改动它。
-首次 init 在交互终端中提供场景和档案选择；非交互、CI 或 --json 默认通用场景且不创建档案。sync 未指定场景时沿用已保存选择。
+首次 init 依次选择框架、语言、场景和档案；Vue 2 固定使用 JS。非交互、CI 或 --json 必须指定框架，Vue 3/React 还必须指定语言；默认通用场景且不创建档案。
+sync 沿用未指定的选择，直接覆盖受控文件的手工修改。项目补充约定写入 profile。
 `;
 
 function parseOptions(optionArgs) {
   const allowed = new Map([['--project', 'value'], ['--json', 'flag']]);
-  if (command === 'init' || command === 'sync') allowed.set('--scenarios', 'value');
+  if (command === 'init' || command === 'sync') {
+    for (const name of ['--scenarios', '--framework', '--language']) allowed.set(name, 'value');
+  }
   if (command === 'init') {
     allowed.set('--no-install', 'flag');
     allowed.set('--profile', 'value');
@@ -59,13 +63,15 @@ async function main() {
   const root = resolve(options['--project'] ?? '.');
   let scenarios = options['--scenarios'] === undefined ? undefined : parseScenarios(options['--scenarios']);
   let profile = options['--profile'] === undefined ? null : parseProfile(options['--profile']);
+  let stackOptions = { framework: options['--framework'], language: options['--language'] };
   const interactive = command === 'init' && !json && !process.env.CI && process.stdin.isTTY && process.stdout.isTTY && !existsSync(join(root, '.ai-code/config.json'));
+  if (interactive) stackOptions = await promptStack(stackOptions);
   if (interactive && scenarios === undefined) scenarios = await promptScenarios();
-  if (interactive && options['--profile'] === undefined && scenarios?.length && !existsSync(join(root, profilePath))) profile = await promptProfile(scenarios);
+  if (interactive && options['--profile'] === undefined && !existsSync(join(root, profilePath))) profile = await promptProfile(scenarios);
   let report;
   switch (command) {
-    case 'init': report = initProject(root, { install: !options['--no-install'], scenarios, profile }); break;
-    case 'sync': report = syncProject(root, { scenarios }); break;
+    case 'init': report = initProject(root, { install: !options['--no-install'], scenarios, profile, ...stackOptions }); break;
+    case 'sync': report = syncProject(root, { scenarios, ...stackOptions }); break;
     case 'status': report = checkProject(root, { execute: false }); break;
     case 'check': report = checkProject(root); break;
     case 'quality':
@@ -75,11 +81,12 @@ async function main() {
   if (json) process.stdout.write(JSON.stringify(report, null, 2) + '\n');
   else if (command === 'init') {
     console.log(report.unchanged ? '已接入，无需修改' : '已接入 Cursor 规则和质量检查（观察模式）');
+    console.log(`技术栈：${describeStack(report.config.stack)}`);
     console.log(`项目场景：${describeScenarios(report.config.scenarios)}`);
     if (report.profile?.created) console.log(`项目档案：已按「${report.profile.template}」模板创建 ${report.profile.path}，请替换其中的待填项并删除示例`);
     else if (report.profile) console.log(`项目档案：${report.profile.path} 已存在，未覆盖`);
   }
-  else if (command === 'sync') console.log(`受控规则已同步；项目场景：${describeScenarios(report.scenarios)}`);
+  else if (command === 'sync') console.log(`受控规则已覆盖同步；技术栈：${describeStack(report.stack)}；项目场景：${describeScenarios(report.scenarios)}`);
   else if (command === 'quality') {
     console.log(`增量诊断：${report.status}；改动文件 ${report.files.length}；新增诊断 ${report.total}；历史诊断 ${report.baselineCount}`);
     for (const diagnostic of report.diagnostics) console.log(`${diagnostic.filePath}:${diagnostic.line}:${diagnostic.column} ${diagnostic.ruleId ?? 'eslint'} ${diagnostic.message}`);
@@ -87,6 +94,7 @@ async function main() {
     for (const issue of report.issues) console.error(issue);
   }
   else {
+    console.log(`技术栈：${describeStack(report.stack)}`);
     console.log(`项目场景：${describeScenarios(report.scenarios)}`);
     for (const [name, result] of Object.entries(report.checks)) console.log(`${name}: ${result.status}${result.script ? ` (${result.script})` : ''}`);
     const constants = report.checks.constants;
