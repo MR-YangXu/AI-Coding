@@ -15,7 +15,7 @@ function fixture(scripts = { lint: 'node -e "process.exit(0)"', 'type-check': 'n
 }
 
 function run(dir, ...args) {
-  if (args[0] === 'init' && !existsSync(join(dir, '.ai-code/config.json'))) args.push('--framework', 'vue3', '--language', 'ts');
+  if (args[0] === 'init' && !existsSync(join(dir, '.ai-code/config.json'))) args.push('--framework', 'vue3');
   return spawnSync(process.execPath, [cli, ...args, '--project', dir], { cwd: dir, encoding: 'utf8' });
 }
 
@@ -181,6 +181,8 @@ test('packed npm package runs via the consumer project ai:check script', () => {
     writeFileSync(pkgPath, JSON.stringify({ name: target.name, version: target.version, scripts: target.scripts }));
     const packed = spawnSync('npm', ['pack', '--pack-destination', dir, '--json'], { cwd: resolve('.'), encoding: 'utf8', env: npmEnv });
     assert.equal(packed.status, 0, packed.stderr);
+    const packedFiles = JSON.parse(packed.stdout)[0].files.map(file => file.path);
+    assert.ok(!packedFiles.some(path => /content\/templates\/(?:admin|constants)\/(?:vue3-js|react-js)\//.test(path)));
     const tarballName = JSON.parse(packed.stdout)[0].filename.replace(/^@([^/]+)\//, '$1-');
     const tarball = join(dir, tarballName);
     const installed = spawnSync('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--save-dev', tarball], { cwd: dir, encoding: 'utf8', env: npmEnv, timeout: 15000 });
@@ -190,7 +192,7 @@ test('packed npm package runs via the consumer project ai:check script', () => {
     withPackage.devDependencies = { ...withPackage.devDependencies, ...target.devDependencies };
     writeFileSync(pkgPath, JSON.stringify(withPackage));
     const localCli = join(dir, 'node_modules/.bin/ai-code');
-    const init = spawnSync(localCli, ['init', '--framework', 'vue3', '--language', 'ts', '--scenarios', 'admin,mobile-h5'], { cwd: dir, encoding: 'utf8', env: npmEnv, timeout: 15000 });
+    const init = spawnSync(localCli, ['init', '--framework', 'vue3', '--scenarios', 'admin,mobile-h5'], { cwd: dir, encoding: 'utf8', env: npmEnv, timeout: 15000 });
     assert.equal(init.status, 0, init.stderr);
     assert.ok(existsSync(join(dir, '.cursor/skills/ai-code-admin/SKILL.md')));
     assert.ok(existsSync(join(dir, '.cursor/skills/ai-code-mobile-h5/SKILL.md')));
@@ -210,12 +212,17 @@ test('packed npm package runs via the consumer project ai:check script', () => {
     assert.match(check.stdout, /"status": "passed"/);
     const direct = spawnSync(localCli, ['check', '--json'], { cwd: dir, encoding: 'utf8', env: npmEnv });
     assert.equal(JSON.parse(direct.stdout).checks.constants.status, 'passed', direct.stdout);
-    for (const [framework, language] of [['vue2', 'js'], ['vue3', 'js'], ['vue3', 'ts'], ['react', 'js'], ['react', 'ts']]) {
+    for (const [framework, language] of [['vue2', 'js'], ['vue3', 'ts'], ['react', 'ts']]) {
       const consumer = join(dir, `${framework}-${language}`);
       mkdirSync(consumer);
       writeFileSync(join(consumer, 'package.json'), JSON.stringify({ name: 'consumer', version: '1.0.0', scripts: target.scripts }));
-      const initialize = spawnSync(localCli, ['init', '--project', consumer, '--no-install', '--framework', framework, '--language', language, '--profile', 'base', '--json'], { cwd: consumer, env: npmEnv, encoding: 'utf8' });
+      const initialize = spawnSync(localCli, ['init', '--project', consumer, '--no-install', '--framework', framework, '--profile', 'base', '--json'], { cwd: consumer, env: npmEnv, encoding: 'utf8' });
       assert.equal(initialize.status, 0, initialize.stdout || initialize.stderr);
+      const add = spawnSync(localCli, ['add', 'admin', '--project', consumer, '--json'], { cwd: consumer, env: npmEnv, encoding: 'utf8' });
+      assert.equal(add.status, 0, add.stdout || add.stderr);
+      const added = JSON.parse(add.stdout);
+      assert.equal(added.ok, true);
+      for (const item of added.items) for (const path of item.files) assert.ok(existsSync(join(consumer, path)), path);
       const variant = join(templates, `${framework}-${language}`);
       const componentExt = framework === 'react' ? `${language}x` : 'vue';
       for (const [from, to] of [[`common.${language}`, `src/constants/common.${language}`], [`index.${language}`, `src/constants/index.${language}`], [`business.constants.${language}`, `src/views/orders/constants.${language}`], [`usage.${componentExt}`, `src/views/orders/index.${componentExt}`]]) {

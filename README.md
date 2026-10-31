@@ -10,29 +10,47 @@
 npx @agent-xy/ai-code init
 ```
 
-首次交互依次选择框架、语言规则、业务场景和可选项目 profile：
+首次交互依次选择框架、业务场景和可选项目 profile，语言由框架固定确定：
 
 | 框架 | 语言规则 | 技能 |
 | --- | --- | --- |
 | Vue 2 | JavaScript | 页面、组件、逻辑复用、状态、路由、国际化、API、常量 |
-| Vue 3 | JavaScript / TypeScript | 页面、组件、组合式函数、状态、路由、国际化、API、常量；TS 另加类型 |
-| React | JavaScript / TypeScript | 页面、组件、React Hook、状态、路由、国际化、API、常量；TS 另加类型 |
+| Vue 3 | TypeScript | 页面、组件、组合式函数、状态、路由、国际化、API、常量、类型 |
+| React | TypeScript | 页面、组件、React Hook、状态、路由、国际化、API、常量、类型 |
 
-框架与语言完全由用户选择，不读取依赖推断，不强制 Vite，也不会因缺少框架依赖而拒绝安装。选择规则不会转换业务源码。Vue 2 面向传统 Options API（选项式 API）；React 面向普通网页函数组件，未提供 Next.js、React Native 或多框架根目录隔离能力。
+框架由用户选择，Vue 2 固定 JS，Vue 3/React 固定 TS，不读取依赖推断，不强制 Vite，也不会因缺少框架依赖而拒绝安装。选择规则不会转换业务源码。Vue 2 面向传统 Options API（选项式 API）；React 面向普通网页函数组件，未提供 Next.js、React Native 或多框架根目录隔离能力。
 
-非交互、CI 或 `--json` 必须指定框架；Vue 3、React 还必须明确指定语言：
+非交互、CI 或 `--json` 必须指定框架，无需选择语言：
 
 ```bash
 npx @agent-xy/ai-code init --framework vue2 --scenarios admin
-npx @agent-xy/ai-code init --framework vue3 --language ts --profile base
-npx @agent-xy/ai-code init --framework react --language js --scenarios mobile-h5
+npx @agent-xy/ai-code init --framework vue3 --profile base
+npx @agent-xy/ai-code init --framework react --scenarios mobile-h5
 ```
 
-Vue 2 可省略 `--language`，固定为 js。场景支持 none、admin、mobile-h5、admin,mobile-h5；默认仅通用规则。非交互未指定 profile 时不创建档案；交互时可选择创建或暂不创建。任一选择取消均不修改项目。
+不提供独立语言参数；配置只接受 Vue 2 + JS、Vue 3 + TS、React + TS。场景支持 none、admin、mobile-h5、admin,mobile-h5；默认仅通用规则。非交互未指定 profile 时不创建档案；交互时可选择创建或暂不创建。任一选择取消均不修改项目。
 
 工具按 packageManager 字段或锁文件选择 npm/pnpm/yarn，安装确切版本开发依赖、注册 `ai:check`，生成规则和配置。`--no-install` 可用于离线生成，后续仍需安装依赖。不会安装或重写目标项目的构建、ESLint、测试或类型配置。
 
 ## 文件归属与升级
+
+### 可选后台源码工具集
+
+接入规则后，项目需要后台列表页基础能力时显式添加：
+
+```bash
+npx @agent-xy/ai-code add admin
+npx @agent-xy/ai-code add admin --only NewTable,usePageList --dry-run --json
+npx @agent-xy/ai-code add admin --only NewTable,usePageList --conflict rename
+```
+
+提供 BaseCard、NewSearchForm、NewTable、列表/选项/异步操作逻辑、Dialog/Drawer、formRender/tableRender/data 和 TS 类型。Vue 3 由 matrixflow-front 的通用实现抽取并解耦，使用 Element Plus；React 使用 Ant Design；Vue 2 使用 Element UI 和选项式逻辑。
+
+命令沿用保存的技术栈，默认合入 `src/components`、`src/hooks`（Vue 2 为 `src/logic`）、`src/utils`、`src/types`（仅 TS），支持 `--source-dir`。单项通过 `--only` 选择并携带必要依赖。Vue 2 的命令能力名仍为 usePageList/useSelectOptions/useAsyncListAction，源码导出为 createPageList/createSelectOptions/createAsyncListAction。
+
+同名文件内容一致时复用；其他冲突提供替换、不复制、重命名。非交互默认报错，`--conflict replace|skip|rename` 显式指定策略。跳过冲突依赖时连带跳过消费者；重命名自动调整本批源码导入。全部选择完成后才写入，取消不修改项目；替换只处理清单文件，不清空组件目录。
+
+**这些源码归目标项目维护，不进入受控规则清单，sync 不覆盖或删除。** 工具不创建业务页面、路由或接口，不改现有导出入口；只检查 UI 与辅助依赖并给出安装命令。完成后按实际路径提示补充 profile，不自动改写。完整接入说明与三种组合示例位于包内 `content/templates/admin/<框架>-<语言>/README.md`。
 
 | 文件 | 维护方式 |
 | --- | --- |
@@ -47,7 +65,7 @@ Vue 2 可省略 `--language`，固定为 js。场景支持 none、admin、mobile
 ```bash
 npx @agent-xy/ai-code status
 npx @agent-xy/ai-code sync
-npx @agent-xy/ai-code sync --framework react --language ts
+npx @agent-xy/ai-code sync --framework react
 npx @agent-xy/ai-code sync --scenarios admin,mobile-h5
 npx @agent-xy/ai-code sync --scenarios none
 ```
@@ -126,9 +144,9 @@ Vue 2、Vue 3、React 均支持只读常量扫描。项目显式配置 constants
 | bindings.jsx | React 的 component、prop 绑定，名称按源码，范围限定在业务模块 |
 | tsconfig | 历史字段，可指向 tsconfig.json 或 jsconfig.json 以解析别名 |
 
-未指定配置文件时，JS 优先 jsconfig.json，TS 优先 tsconfig.json，再尝试另一种；不改变用户选择的语言。构建工具中未登记的别名不自动猜测。路径不能逃出项目，源码不能经符号链接引用项目外定义。
+未指定配置文件时，JS 优先 jsconfig.json，TS 优先 tsconfig.json，再尝试另一种；不改变框架规定的语言。构建工具中未登记的别名不自动猜测。路径不能逃出项目，源码不能经符号链接引用项目外定义。
 
-示例位于 `content/templates/constants/vue2-js/`、`vue3-js/`、`vue3-ts/`、`react-js/`、`react-ts/`，旧 `content/templates/constants/` 保留 Vue 3 TS 入口。复制前核实已有定义，配置只合并 constants 部分。示例不是业务接口事实。
+示例位于 `content/templates/constants/vue2-js/`、`vue3-ts/`、`react-ts/`，旧 `content/templates/constants/` 保留 Vue 3 TS 入口。复制前核实已有定义，配置只合并 constants 部分。示例不是业务接口事实。
 
 报告状态：not_configured（未配置）、available（只检查配置）、passed（扫描完成无诊断）、warning（观察模式违规或疑似重复）、failed（阻断模式确定违规）、incomplete（解析/配置未完成）。失败的解析不会显示通过，外置 Vue 块、预处理模板等当前不支持输入会明确报告。默认展示最多 5 条诊断，保留总数和原始源文件行列。
 
@@ -140,6 +158,10 @@ npm test
 npm pack --dry-run
 ```
 
-测试包括五种技术栈的接入、交互、配置迁移、受控覆盖、常量解析和离线打包安装。离线安装测试需要 npm 缓存含锁文件的依赖；先完成 npm ci。工具内部的 TypeScript 和模板解析器不代表目标 JS 项目需要类型规则。
+维护后台源码时，编辑 Vue 3/React 的 TS 源、Vue 2 的 JS 源及共享逻辑，再运行 `node scripts/build-admin.mjs` 同步三种组合的共享核心与显式清单，仅为 Vue 2 生成共享核心的 JS 文件，不再派生 Vue 3/React 的 JS 版本。
+
+运行真实 UI 验证前，分别在 `test/fixtures/admin-runtime/vue3-react` 和 `test/fixtures/admin-runtime/vue2` 执行 `npm ci --ignore-scripts`，然后运行 `node scripts/verify-admin.mjs`。该验证使用真实 UI 库在 DOM 模拟环境中检查三种组合编译、两种 TS 严格类型和关键交互，独立于 CLI 的 `npm test`。夹具依赖不随 npm 包发布。
+
+测试包括三种技术栈的接入、交互、配置迁移、受控覆盖、常量解析和离线打包安装。离线安装测试需要 npm 缓存含锁文件的依赖；先完成 npm ci。工具内部的 TypeScript 和模板解析器不代表目标 JS 项目需要类型规则。
 
 命令完整参数见 `ai-code --help`。发布流程见 docs 中的发包说明；本仓库不会自动发布包。

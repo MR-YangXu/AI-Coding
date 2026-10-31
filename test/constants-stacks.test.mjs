@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { checkConstants } from '../src/constants/check.mjs';
 
-const stacks = [{ framework: 'vue2', language: 'js' }, ...['vue3', 'react'].flatMap(framework => ['js', 'ts'].map(language => ({ framework, language })))];
+const stacks = [{ framework: 'vue2', language: 'js' }, { framework: 'vue3', language: 'ts' }, { framework: 'react', language: 'ts' }];
 function fixture(stack) {
   const root = mkdtempSync(join(tmpdir(), 'ai-code-scan-stack-'));
   const template = resolve(`content/templates/constants/${stack.framework}-${stack.language}`);
@@ -36,11 +36,11 @@ for (const stack of stacks) {
   });
 }
 
-for (const stack of [{ framework: 'vue2', language: 'js' }, { framework: 'react', language: 'js' }]) {
+for (const stack of [{ framework: 'vue2', language: 'js' }, { framework: 'react', language: 'ts' }]) {
   test(`${stack.framework}: Object.freeze constants, dictionaries and aliases are recognized`, () => {
     const f = fixture(stack);
     try {
-      f.write('src/views/orders/constants.js', `export const ORDER_STATUS = Object.freeze({PENDING:1, PROCESSING:2, COMPLETED:3});
+      f.write(`src/views/orders/constants.${stack.language}`, `export const ORDER_STATUS = Object.freeze({PENDING:1, PROCESSING:2, COMPLETED:3});
 export const ORDER_STATUS_DICT = Object.freeze({[ORDER_STATUS.PENDING]:'a',[ORDER_STATUS.PROCESSING]:'b',[ORDER_STATUS.COMPLETED]:'c'});
 export const ORDER_STATUS_OPTIONS = Object.values(ORDER_STATUS).map(value => ({value,label:ORDER_STATUS_DICT[value]}));`);
       assert.equal(f.check().status, 'passed', summary(f.check()));
@@ -101,9 +101,10 @@ export default {data(){return {ORDER_STATUS, query:{status:ORDER_STATUS.PENDING}
   } finally { f.close(); }
 });
 
-for (const language of ['js','ts']) {
-  test(`React ${language}: real useState, lazy state, setters, JSX and scopes`, () => {
-    const f = fixture({ framework: 'react', language });
+for (const extension of ['jsx', 'tsx']) {
+  test(`React TS project scans ${extension}: real useState, lazy state, setters and scopes`, () => {
+    const f = fixture({ framework: 'react', language: 'ts' });
+    f.code = code => f.write(`src/views/orders/check.${extension}`, code);
     try {
       f.config.modules[0].bindings[0].jsx.push({ component: 'StatusSelect', prop: 'value' });
       f.code(`import React, {useState as useValue} from 'react';
@@ -117,7 +118,7 @@ function Page() {
   return <StatusSelect value={status} onChange={() => setStatus(previous => STATUS.COMPLETED)} />;
 }`);
       assert.equal(f.check().status, 'passed', summary(f.check()));
-      const file = `src/views/orders/check.${language}x`;
+      const file = `src/views/orders/check.${extension}`;
       const code = readFileSync(join(f.root, file), 'utf8');
       f.write(file, code.replace('() => STATUS.PENDING', '() => 1').replace('previous => STATUS.COMPLETED', 'previous => { if (previous) return 2; return STATUS.PENDING; }').replace('value={status}', 'value={3}'));
       const report = f.check();
@@ -132,7 +133,7 @@ function Page() {
 }
 
 test('React object state and reducer fields are checked without flagging ordinary numbers', () => {
-  const f = fixture({ framework:'react', language:'js' });
+  const f = fixture({ framework:'react', language:'ts' });
   try {
     f.code(`import {useState,useReducer} from 'react';
 const [query,setQuery] = useState({status:1,page:1});
@@ -143,9 +144,11 @@ const [state,dispatch] = useReducer(reducer,{status:1});`);
   } finally { f.close(); }
 });
 
-test('React parses JSX in .js and resolves jsconfig aliases', () => {
-  const f = fixture({framework:'react',language:'js'});
+test('React TS rules preserve .js parsing and an explicit jsconfig alias source', () => {
+  const f = fixture({framework:'react',language:'ts'});
   try {
+    f.write('jsconfig.json', JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@/*': ['src/*'] } } }));
+    f.config.tsconfig = 'jsconfig.json';
     f.write('src/views/orders/plain.js', `import {ORDER_STATUS} from '@/views/orders/constants';export const node = <output data-status={ORDER_STATUS.PENDING}/>;`);
     assert.equal(f.check().status, 'passed', summary(f.check()));
     f.write('src/views/orders/plain.js', `export const node = <output data-status={1}/>;`);
@@ -160,7 +163,7 @@ test('unsupported Vue 2 inputs, invalid JSX and invalid binding configuration ar
       f.code(code); assert.equal(f.check().status, 'incomplete', summary(f.check()));
     }
   } finally { f.close(); }
-  const react = fixture({framework:'react',language:'js'});
+  const react = fixture({framework:'react',language:'ts'});
   try {
     react.code('export const node = <div>'); assert.equal(react.check().status, 'incomplete');
     react.code('export const node = <div/>;');
@@ -195,7 +198,7 @@ export default {data(){return {labels:DICT,query:{status:1}}},methods:{go(){retu
 });
 
 test('qualified React state paths cover object initialization and functional updates', () => {
-  const f = fixture({framework:'react',language:'js'});
+  const f = fixture({framework:'react',language:'ts'});
   try {
     f.config.modules[0].bindings[0].fields = ['query.status'];
     f.code(`import {useState} from 'react';

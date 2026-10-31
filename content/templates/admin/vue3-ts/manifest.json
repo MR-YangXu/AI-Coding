@@ -1,0 +1,169 @@
+{
+  "items": {
+    "_core": {
+      "root": "utils/adminCore.ts",
+      "files": [
+        "utils/adminCore.ts"
+      ],
+      "dependencies": [],
+      "requirements": {}
+    },
+    "_types": {
+      "root": "types/admin.ts",
+      "files": [
+        "types/admin.ts"
+      ],
+      "dependencies": [
+        "_core"
+      ],
+      "requirements": {
+        "vue": "^3.3.0"
+      }
+    },
+    "BaseCard": {
+      "root": "components/BaseCard",
+      "files": [
+        "components/BaseCard/index.vue"
+      ],
+      "dependencies": [],
+      "requirements": {
+        "vue": "^3.3.0",
+        "sass": "^1.69.0"
+      }
+    },
+    "NewSearchForm": {
+      "root": "components/NewSearchForm",
+      "files": [
+        "components/NewSearchForm/components/SearchField.vue",
+        "components/NewSearchForm/index.vue",
+        "components/NewSearchForm/style.scss",
+        "components/NewSearchForm/useSearchDraft.ts"
+      ],
+      "dependencies": [
+        "_core",
+        "_types"
+      ],
+      "requirements": {
+        "vue": "^3.3.0",
+        "element-plus": "^2.4.0",
+        "sass": "^1.69.0"
+      }
+    },
+    "NewTable": {
+      "root": "components/NewTable",
+      "files": [
+        "components/NewTable/ColumnSettings.vue",
+        "components/NewTable/TableCell.ts",
+        "components/NewTable/index.vue",
+        "components/NewTable/style.scss",
+        "components/NewTable/useColumnVisibility.ts"
+      ],
+      "dependencies": [
+        "_types"
+      ],
+      "requirements": {
+        "vue": "^3.3.0",
+        "element-plus": "^2.4.0",
+        "sass": "^1.69.0"
+      }
+    },
+    "Dialog": {
+      "root": "components/Dialog",
+      "files": [
+        "components/Dialog/BaseDialog.vue",
+        "components/Dialog/index.ts"
+      ],
+      "dependencies": [],
+      "requirements": {
+        "vue": "^3.3.0",
+        "element-plus": "^2.4.0",
+        "sass": "^1.69.0"
+      }
+    },
+    "Drawer": {
+      "root": "components/Drawer",
+      "files": [
+        "components/Drawer/BaseDrawer.vue",
+        "components/Drawer/index.ts"
+      ],
+      "dependencies": [],
+      "requirements": {
+        "vue": "^3.3.0",
+        "element-plus": "^2.4.0",
+        "sass": "^1.69.0"
+      }
+    },
+    "usePageList": {
+      "root": "hooks/usePageList.ts",
+      "files": [
+        "hooks/usePageList.ts"
+      ],
+      "dependencies": [
+        "_core"
+      ],
+      "requirements": {
+        "vue": "^3.3.0"
+      }
+    },
+    "useSelectOptions": {
+      "root": "hooks/useSelectOptions.ts",
+      "files": [
+        "hooks/useSelectOptions.ts"
+      ],
+      "dependencies": [
+        "_core",
+        "_types"
+      ],
+      "requirements": {
+        "vue": "^3.3.0"
+      }
+    },
+    "useAsyncListAction": {
+      "root": "hooks/useAsyncListAction.ts",
+      "files": [
+        "hooks/useAsyncListAction.ts"
+      ],
+      "dependencies": [
+        "_core"
+      ],
+      "requirements": {
+        "vue": "^3.3.0",
+        "element-plus": "^2.4.0",
+        "sass": "^1.69.0"
+      }
+    },
+    "formRender": {
+      "root": "utils/formRender.ts",
+      "files": [
+        "utils/formRender.ts"
+      ],
+      "dependencies": [
+        "_core",
+        "_types"
+      ],
+      "requirements": {}
+    },
+    "tableRender": {
+      "root": "utils/tableRender.ts",
+      "files": [
+        "utils/tableRender.ts"
+      ],
+      "dependencies": [
+        "_types"
+      ],
+      "requirements": {
+        "vue": "^3.3.0"
+      }
+    },
+    "data": {
+      "root": "utils/data.ts",
+      "files": [
+        "utils/data.ts"
+      ],
+      "dependencies": [
+        "_core"
+      ],
+      "requirements": {}
+    }
+  }
+}

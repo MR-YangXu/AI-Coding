@@ -1,0 +1,22 @@
+// 局部布局变量集中维护；控件颜色与状态沿用项目 UI 主题。
+.ai-code-search-form {
+  $block: &;
+  $field-gap: 16px;
+  $row-gap: 18px;
+
+  gap: 0 $field-gap;
+
+  #{$block}__field,
+  #{$block}__actions {
+    margin: 0 0 $row-gap;
+    max-width: 100%;
+  }
+
+  #{$block}__field {
+    // 保留容器、字段、控件的选择器层级，优先于日期控件的默认宽度。
+    #{$block}__control {
+      width: var(--ai-code-field-width, 150px);
+      max-width: 100%;
+    }
+  }
+}

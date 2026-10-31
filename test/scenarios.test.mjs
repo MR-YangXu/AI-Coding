@@ -29,7 +29,7 @@ function fixture() {
 }
 
 function run(dir, ...args) {
-  if (args[0] === 'init' && !existsSync(join(dir, '.ai-code/config.json'))) args.push('--framework', 'vue3', '--language', 'ts');
+  if (args[0] === 'init' && !existsSync(join(dir, '.ai-code/config.json'))) args.push('--framework', 'vue3');
   return spawnSync(process.execPath, [cli, ...args, '--project', dir], { cwd: dir, encoding: 'utf8', timeout: 15000 });
 }
 

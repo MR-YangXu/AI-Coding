@@ -1,0 +1,194 @@
+{
+  "items": {
+    "_core": {
+      "root": "utils/adminCore.ts",
+      "files": [
+        "utils/adminCore.ts"
+      ],
+      "dependencies": [],
+      "requirements": {}
+    },
+    "_types": {
+      "root": "types/admin.ts",
+      "files": [
+        "types/admin.ts"
+      ],
+      "dependencies": [
+        "_core"
+      ],
+      "requirements": {
+        "@types/react": "^18.3.0"
+      }
+    },
+    "BaseCard": {
+      "root": "components/BaseCard",
+      "files": [
+        "components/BaseCard/index.tsx"
+      ],
+      "dependencies": [],
+      "requirements": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "@types/react": "^18.3.0",
+        "@types/react-dom": "^18.3.0",
+        "antd": "^5.0.0"
+      }
+    },
+    "NewSearchForm": {
+      "root": "components/NewSearchForm",
+      "files": [
+        "components/NewSearchForm/SearchField.tsx",
+        "components/NewSearchForm/fieldBinding.ts",
+        "components/NewSearchForm/index.tsx",
+        "components/NewSearchForm/style.scss",
+        "components/NewSearchForm/useSearchForm.ts"
+      ],
+      "dependencies": [
+        "_core",
+        "_types"
+      ],
+      "requirements": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "@types/react": "^18.3.0",
+        "@types/react-dom": "^18.3.0",
+        "antd": "^5.0.0",
+        "sass": "^1.69.0",
+        "dayjs": "^1.11.0"
+      }
+    },
+    "NewTable": {
+      "root": "components/NewTable",
+      "files": [
+        "components/NewTable/columns.ts",
+        "components/NewTable/index.tsx",
+        "components/NewTable/style.scss"
+      ],
+      "dependencies": [
+        "_types"
+      ],
+      "requirements": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "@types/react": "^18.3.0",
+        "@types/react-dom": "^18.3.0",
+        "antd": "^5.0.0",
+        "sass": "^1.69.0"
+      }
+    },
+    "Dialog": {
+      "root": "components/Dialog",
+      "files": [
+        "components/Dialog/BaseDialog.tsx",
+        "components/Dialog/index.tsx"
+      ],
+      "dependencies": [],
+      "requirements": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "@types/react": "^18.3.0",
+        "@types/react-dom": "^18.3.0",
+        "antd": "^5.0.0"
+      }
+    },
+    "Drawer": {
+      "root": "components/Drawer",
+      "files": [
+        "components/Drawer/index.tsx"
+      ],
+      "dependencies": [
+        "Dialog"
+      ],
+      "requirements": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "@types/react": "^18.3.0",
+        "@types/react-dom": "^18.3.0",
+        "antd": "^5.0.0"
+      }
+    },
+    "usePageList": {
+      "root": "hooks/usePageList.ts",
+      "files": [
+        "hooks/usePageList.ts"
+      ],
+      "dependencies": [
+        "_core"
+      ],
+      "requirements": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "@types/react": "^18.3.0",
+        "@types/react-dom": "^18.3.0"
+      }
+    },
+    "useSelectOptions": {
+      "root": "hooks/useSelectOptions.ts",
+      "files": [
+        "hooks/useSelectOptions.ts"
+      ],
+      "dependencies": [
+        "_core",
+        "_types"
+      ],
+      "requirements": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "@types/react": "^18.3.0",
+        "@types/react-dom": "^18.3.0"
+      }
+    },
+    "useAsyncListAction": {
+      "root": "hooks/useAsyncListAction.ts",
+      "files": [
+        "hooks/useAsyncListAction.ts"
+      ],
+      "dependencies": [
+        "_core"
+      ],
+      "requirements": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "@types/react": "^18.3.0",
+        "@types/react-dom": "^18.3.0",
+        "antd": "^5.0.0"
+      }
+    },
+    "formRender": {
+      "root": "utils/formRender.ts",
+      "files": [
+        "utils/formRender.ts"
+      ],
+      "dependencies": [
+        "_core",
+        "_types"
+      ],
+      "requirements": {}
+    },
+    "tableRender": {
+      "root": "utils/tableRender.ts",
+      "files": [
+        "utils/tableRender.ts"
+      ],
+      "dependencies": [
+        "_types"
+      ],
+      "requirements": {
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "@types/react": "^18.3.0",
+        "@types/react-dom": "^18.3.0"
+      }
+    },
+    "data": {
+      "root": "utils/data.ts",
+      "files": [
+        "utils/data.ts"
+      ],
+      "dependencies": [
+        "_core"
+      ],
+      "requirements": {}
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { select } from '@inquirer/prompts';
+import { select, input } from '@inquirer/prompts';
 
 export const cancelMessage = '已取消，未修改项目';
 
@@ -29,4 +29,8 @@ function ask(prompt, config, { input = process.stdin, output = process.stdout } 
 
 export function askSelect(config, streams) {
   return ask(select, config, streams);
+}
+
+export function askInput(config, streams) {
+  return ask(input, config, streams);
 }

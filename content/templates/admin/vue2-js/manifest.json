@@ -1,0 +1,141 @@
+{
+  "items": {
+    "_core": {
+      "root": "utils/adminCore.js",
+      "files": [
+        "utils/adminCore.js"
+      ],
+      "dependencies": [],
+      "requirements": {}
+    },
+    "BaseCard": {
+      "root": "components/BaseCard",
+      "files": [
+        "components/BaseCard/index.vue"
+      ],
+      "dependencies": [],
+      "requirements": {
+        "vue": "^2.6.14"
+      }
+    },
+    "NewSearchForm": {
+      "root": "components/NewSearchForm",
+      "files": [
+        "components/NewSearchForm/components/SearchField.vue",
+        "components/NewSearchForm/index.vue",
+        "components/NewSearchForm/style.scss"
+      ],
+      "dependencies": [
+        "_core"
+      ],
+      "requirements": {
+        "vue": "^2.6.14",
+        "element-ui": "^2.15.0",
+        "sass": "^1.69.0"
+      }
+    },
+    "NewTable": {
+      "root": "components/NewTable",
+      "files": [
+        "components/NewTable/TableCell.js",
+        "components/NewTable/index.vue",
+        "components/NewTable/style.scss"
+      ],
+      "dependencies": [],
+      "requirements": {
+        "vue": "^2.6.14",
+        "element-ui": "^2.15.0",
+        "sass": "^1.69.0"
+      }
+    },
+    "Dialog": {
+      "root": "components/Dialog",
+      "files": [
+        "components/Dialog/BaseDialog.vue",
+        "components/Dialog/index.js"
+      ],
+      "dependencies": [],
+      "requirements": {
+        "vue": "^2.6.14",
+        "element-ui": "^2.15.0"
+      }
+    },
+    "Drawer": {
+      "root": "components/Drawer",
+      "files": [
+        "components/Drawer/BaseDrawer.vue",
+        "components/Drawer/index.js"
+      ],
+      "dependencies": [],
+      "requirements": {
+        "vue": "^2.6.14",
+        "element-ui": "^2.15.0"
+      }
+    },
+    "usePageList": {
+      "root": "logic/createPageList.js",
+      "files": [
+        "logic/createPageList.js"
+      ],
+      "dependencies": [
+        "_core"
+      ],
+      "requirements": {
+        "vue": "^2.6.14"
+      }
+    },
+    "useSelectOptions": {
+      "root": "logic/createSelectOptions.js",
+      "files": [
+        "logic/createSelectOptions.js"
+      ],
+      "dependencies": [
+        "_core"
+      ],
+      "requirements": {
+        "vue": "^2.6.14"
+      }
+    },
+    "useAsyncListAction": {
+      "root": "logic/createAsyncListAction.js",
+      "files": [
+        "logic/createAsyncListAction.js"
+      ],
+      "dependencies": [
+        "_core"
+      ],
+      "requirements": {
+        "vue": "^2.6.14",
+        "element-ui": "^2.15.0"
+      }
+    },
+    "formRender": {
+      "root": "utils/formRender.js",
+      "files": [
+        "utils/formRender.js"
+      ],
+      "dependencies": [
+        "_core"
+      ],
+      "requirements": {}
+    },
+    "tableRender": {
+      "root": "utils/tableRender.js",
+      "files": [
+        "utils/tableRender.js"
+      ],
+      "dependencies": [],
+      "requirements": {}
+    },
+    "data": {
+      "root": "utils/data.js",
+      "files": [
+        "utils/data.js"
+      ],
+      "dependencies": [
+        "_core"
+      ],
+      "requirements": {}
+    }
+  }
+}

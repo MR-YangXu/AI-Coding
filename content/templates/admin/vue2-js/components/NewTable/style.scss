@@ -1,0 +1,25 @@
+// 只管理组件分区布局，表格尺寸、列对齐和主题交给 UI 库。
+.ai-code-table {
+  $section-gap: 16px;
+  $inline-gap: 12px;
+
+  min-width: 0;
+
+  &__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $inline-gap;
+    margin-bottom: $section-gap;
+  }
+
+  &__pagination {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: $inline-gap;
+    margin-top: $section-gap;
+    overflow-x: auto;
+  }
+}

@@ -94,15 +94,15 @@ function installPackage(root, manager) {
   if (result.error || result.status !== 0) throw new Error(`安装 ${pkg.name} 失败：${result.error?.message ?? result.status}`);
 }
 
-export function initProject(root, { install = true, scenarios, profile = null, framework, language } = {}) {
+export function initProject(root, { install = true, scenarios, profile = null, framework } = {}) {
   const selected = scenarios === undefined ? undefined : normalizeScenarios(scenarios);
   let project = readPackage(root);
   const configFile = join(root, configPath);
   guardPath(root, configPath);
   if (existsSync(configFile)) {
     const config = readConfig(root);
-    const stack = resolveStack({ framework, language }, config.stack);
-    if (JSON.stringify(stack) !== JSON.stringify(config.stack)) throw new Error('项目已接入；变更技术栈请运行 ai-code sync --framework <框架> --language <语言>');
+    const stack = resolveStack({ framework }, config.stack);
+    if (JSON.stringify(stack) !== JSON.stringify(config.stack)) throw new Error('项目已接入；变更技术栈请运行 ai-code sync --framework <框架>');
     if (selected !== undefined && JSON.stringify(selected) !== JSON.stringify(config.scenarios)) {
       throw new Error(`项目已接入；变更场景请运行 ai-code sync --scenarios ${selected.join(',') || 'none'}`);
     }
@@ -113,7 +113,7 @@ export function initProject(root, { install = true, scenarios, profile = null, f
     if (obsoleteManagedFiles(config, expected).length || Object.entries(expected).some(([path, content]) => config.managed[path] !== hash(content))) throw new Error('受控内容与当前技术栈、场景或包内容不一致，请运行 ai-code sync');
     return { unchanged: true, config };
   }
-  const stack = resolveStack({ framework, language });
+  const stack = resolveStack({ framework });
   if (profile) {
     guardPath(root, '.ai-code/profile.md');
     profileTemplate(profile, stack);
@@ -145,10 +145,10 @@ export function initProject(root, { install = true, scenarios, profile = null, f
   return { unchanged: false, config, installed: install, profile: profileResult };
 }
 
-export function syncProject(root, { scenarios, framework, language } = {}) {
+export function syncProject(root, { scenarios, framework } = {}) {
   const config = readConfig(root);
   const selected = scenarios === undefined ? config.scenarios : normalizeScenarios(scenarios);
-  const stack = resolveStack({ framework, language }, config.stack);
+  const stack = resolveStack({ framework }, config.stack);
   const files = cursorFiles(selected, stack);
   const removed = obsoleteManagedFiles(config, files);
   for (const path of Object.keys(config.managed)) guardPath(root, path);

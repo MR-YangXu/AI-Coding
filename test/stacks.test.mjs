@@ -9,8 +9,9 @@ import { initProject, syncProject, readConfig } from '../src/project.mjs';
 import { checkProject } from '../src/check.mjs';
 import { promptStack } from '../src/stack.mjs';
 import { promptProfile } from '../src/profile.mjs';
+import { addAdmin } from '../src/admin.mjs';
 
-const stacks = [{ framework: 'vue2', language: 'js' }, ...['vue3', 'react'].flatMap(framework => ['js', 'ts'].map(language => ({ framework, language })))];
+const stacks = [{ framework: 'vue2', language: 'js' }, { framework: 'vue3', language: 'ts' }, { framework: 'react', language: 'ts' }];
 const cli = resolve('bin/ai-code.mjs');
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'ai-code-stack-'));
@@ -22,7 +23,7 @@ for (const stack of stacks) {
   test(`${stack.framework}/${stack.language}: explicit installation, language checks and profile`, () => {
     const root = fixture();
     try {
-      const { config } = initProject(root, { install: false, ...stack, profile: 'base', scenarios: ['admin', 'mobile-h5'] });
+      const { config } = initProject(root, { install: false, framework: stack.framework, profile: 'base', scenarios: ['admin', 'mobile-h5'] });
       assert.deepEqual(config.stack, stack);
       assert.equal(config.schemaVersion, 2);
       const dirs = readdirSync(join(root, '.cursor/skills'));
@@ -50,8 +51,8 @@ for (const stack of stacks) {
   });
 }
 
-test('noninteractive new projects must explicitly select supported framework and language', () => {
-  for (const flags of [[], ['--framework', 'react'], ['--framework', 'vue3'], ['--language', 'ts'], ['--framework', 'vue2', '--language', 'ts'], ['--framework', '__proto__', '--language', 'js']]) {
+test('noninteractive new projects require a supported framework and reject language flags', () => {
+  for (const flags of [[], ['--language', 'ts'], ['--framework', 'vue2', '--language', 'js'], ['--framework', 'vue3', '--language', 'ts'], ['--framework', 'react', '--language=ts'], ['--framework', '__proto__']]) {
     const root = fixture();
     try {
       const before = readFileSync(join(root, 'package.json'), 'utf8');
@@ -61,17 +62,19 @@ test('noninteractive new projects must explicitly select supported framework and
       assert.equal(readFileSync(join(root, 'package.json'), 'utf8'), before);
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
-  const root = fixture();
-  try {
-    assert.equal(run(root, 'init', '--no-install', '--framework', 'vue2').status, 0);
-    assert.deepEqual(readConfig(root).stack, { framework: 'vue2', language: 'js' });
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  for (const stack of stacks) {
+    const root = fixture();
+    try {
+      assert.equal(run(root, 'init', '--no-install', '--framework', stack.framework).status, 0);
+      assert.deepEqual(readConfig(root).stack, stack);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
 });
 
-test('language and framework switching overwrites/removes controlled files and keeps project content', () => {
+test('framework switching selects its fixed language and preserves project content', () => {
   const root = fixture();
   try {
-    initProject(root, { install: false, framework: 'vue3', language: 'ts', profile: 'base' });
+    initProject(root, { install: false, framework: 'vue3', profile: 'base' });
     const type = join(root, '.cursor/skills/ai-code-type/SKILL.md');
     const hook = join(root, '.cursor/skills/ai-code-hook/SKILL.md');
     const note = join(root, '.cursor/skills/ai-code-type/notes.md');
@@ -90,8 +93,8 @@ test('language and framework switching overwrites/removes controlled files and k
     syncProject(root);
     assert.equal(readFileSync(join(root, '.ai-code/config.json'), 'utf8'), before);
     assert.equal(checkProject(root, { execute: false }).ok, true);
-    assert.throws(() => syncProject(root, { framework: 'react' }), /--language/);
-    syncProject(root, { framework: 'react', language: 'ts' });
+    syncProject(root, { framework: 'react' });
+    assert.deepEqual(readConfig(root).stack, { framework: 'react', language: 'ts' });
     assert.equal(existsSync(type), true);
     assert.equal(existsSync(hook), true);
     assert.equal(existsSync(join(root, '.cursor/skills/ai-code-logic/SKILL.md')), false);
@@ -101,7 +104,7 @@ test('language and framework switching overwrites/removes controlled files and k
 test('v1 migrates on sync without overwriting script mappings, constants or profile', () => {
   const root = fixture();
   try {
-    const { config } = initProject(root, { install: false, framework: 'vue3', language: 'ts', profile: 'base' });
+    const { config } = initProject(root, { install: false, framework: 'vue3', profile: 'base' });
     config.schemaVersion = 1; delete config.stack;
     config.scripts.lint = 'lint:custom';
     config.constants = { projectValue: 'preserved even before it is configured fully' };
@@ -124,7 +127,7 @@ test('JS still executes an explicitly configured failing typecheck', () => {
     const pkg = JSON.parse(readFileSync(join(root, 'package.json')));
     pkg.scripts.typecheck = 'node -e "process.exit(3)"';
     writeFileSync(join(root, 'package.json'), JSON.stringify(pkg));
-    initProject(root, { install: false, framework: 'react', language: 'js' });
+    initProject(root, { install: false, framework: 'vue2' });
     const report = checkProject(root);
     assert.equal(report.ok, false);
     assert.equal(report.checks.typecheck.exitCode, 3);
@@ -140,15 +143,16 @@ async function interact(keys, operation) {
   for (const value of keys) { await new Promise(resolve => setTimeout(resolve, 25)); input.write(value); }
   return { ...await caught, displayed, listeners: input.listenerCount('end') };
 }
-test('prompt chooses framework first, only Vue 3/React ask for language', async () => {
+test('prompt chooses only a framework and exposes its fixed language', async () => {
   const vue2 = await interact([key.enter], streams => promptStack({}, streams));
   assert.deepEqual(vue2.value, { framework: 'vue2', language: 'js' });
   assert.doesNotMatch(vue2.displayed, /选择开发语言规则/);
-  const vue3 = await interact([key.down, key.enter, key.down, key.enter], streams => promptStack({}, streams));
+  const vue3 = await interact([key.down, key.enter], streams => promptStack({}, streams));
   assert.deepEqual(vue3.value, { framework: 'vue3', language: 'ts' });
-  const react = await interact([key.down, key.down, key.enter, key.enter], streams => promptStack({}, streams));
-  assert.deepEqual(react.value, { framework: 'react', language: 'js' });
-  const cancelled = await interact([key.down, key.enter, key.cancel], streams => promptStack({}, streams));
+  const react = await interact([key.down, key.down, key.enter], streams => promptStack({}, streams));
+  assert.deepEqual(react.value, { framework: 'react', language: 'ts' });
+  assert.doesNotMatch(vue3.displayed + react.displayed, /选择开发语言规则/);
+  const cancelled = await interact([key.down, key.cancel], streams => promptStack({}, streams));
   assert.match(cancelled.error.message, /已取消/);
   const base = await interact([key.enter], streams => promptProfile([], streams));
   assert.equal(base.value, 'base');
@@ -157,7 +161,7 @@ test('prompt chooses framework first, only Vue 3/React ask for language', async 
 test('repeat init detects a directly edited stack selection and sync checks all paths before writing', () => {
   const root = fixture();
   try {
-    const { config } = initProject(root, { install: false, framework: 'vue3', language: 'ts' });
+    const { config } = initProject(root, { install: false, framework: 'vue3' });
     config.stack = {framework:'react',language:'ts'};
     writeFileSync(join(root, '.ai-code/config.json'), JSON.stringify(config));
     assert.throws(()=>initProject(root,{install:false}), /ai-code sync/);
@@ -167,4 +171,43 @@ test('repeat init detects a directly edited stack selection and sync checks all 
     assert.throws(()=>syncProject(root),/不是普通文件/);
     assert.equal(readFileSync(join(root,'.cursor/rules/ai-code.mdc'),'utf8'),rule);
   } finally {rmSync(root,{recursive:true,force:true});}
+});
+
+const snapshot = root => Object.fromEntries(readdirSync(root, { withFileTypes: true }).flatMap(entry => {
+  const path = join(root, entry.name);
+  return entry.isDirectory() ? Object.entries(snapshot(path)) : [[path, readFileSync(path, 'utf8')]];
+}));
+
+test('sync rejects the removed language argument before changing any files', () => {
+  const root = fixture();
+  try {
+    initProject(root, { install: false, framework: 'vue2' });
+    const before = snapshot(root);
+    for (const flags of [['--language', 'ts'], ['--framework', 'react', '--language=ts']]) {
+      const result = run(root, 'sync', ...flags);
+      assert.equal(result.status, 1);
+      assert.match(result.stdout, /不支持的参数：--language/);
+      assert.deepEqual(snapshot(root), before);
+    }
+    assert.equal(run(root, 'sync', '--framework', 'react').status, 0);
+    assert.deepEqual(readConfig(root).stack, { framework: 'react', language: 'ts' });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('unsupported saved language combinations fail before init, sync, checks or admin export write', async () => {
+  for (const stack of [{ framework: 'vue2', language: 'ts' }, { framework: 'vue3', language: 'js' }, { framework: 'react', language: 'js' }]) {
+    const root = fixture();
+    try {
+      const { config } = initProject(root, { install: false, framework: stack.framework, profile: 'base' });
+      config.stack = stack;
+      writeFileSync(join(root, '.ai-code/config.json'), JSON.stringify(config));
+      const before = snapshot(root);
+      assert.throws(() => initProject(root, { install: false }), /固定使用/);
+      assert.throws(() => syncProject(root), /固定使用/);
+      assert.throws(() => checkProject(root), /固定使用/);
+      assert.throws(() => checkProject(root, { execute: false }), /固定使用/);
+      await assert.rejects(addAdmin(root), /固定使用/);
+      assert.deepEqual(snapshot(root), before);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
 });

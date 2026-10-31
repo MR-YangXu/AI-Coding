@@ -6,7 +6,7 @@
 
 - `.cursor/rules/ai-code.mdc`、生成的 `ai-code-*` 技能及本说明由包维护，禁止直接修改；`ai-code sync` 会覆盖修改、恢复缺失文件并移除废弃能力。
 - `.ai-code/profile.md` 由团队维护，记录推荐组件、{{logic}}、参考页面、业务目录及局部约定；已有文件永不被同步覆盖。
-- `.ai-code/config.json` 保存明确选择的框架、语言、场景、检查脚本及可选常量绑定；同步保留项目自行维护的检查与常量配置。
+- `.ai-code/config.json` 保存明确选择的框架、其固定语言、场景、检查脚本及可选常量绑定；同步保留项目自行维护的检查与常量配置。
 - 工具只生成能力文件，不建立业务源码骨架。源码、依赖实际版本及调用方仍是实现事实来源。
 
 ## 日常开发
@@ -32,9 +32,11 @@ npx @agent-xy/ai-code sync --scenarios none
 
 升级 npm 包后执行 sync。同步覆盖受控文件的手改内容，无需额外开关；仅删除清单内文件，保留同目录其他文件和 profile。新目标与未受控文件冲突、路径为符号链接时会报错。
 
-切换能力使用 `sync --framework vue2|vue3|react --language js|ts`。Vue 2 固定 JS；切换至 Vue 3 或 React 时明确指定语言。选择只决定安装的规则与扫描适配器，不转换业务源码或升级框架。
+切换能力使用 `sync --framework vue2|vue3|react`。Vue 2 固定 JS，Vue 3/React 固定 TS，不提供独立语言参数。选择只决定安装的规则与扫描适配器，不转换业务源码或升级框架。
 
 ## 质量命令
+
+后台项目缺少公共基础能力时，可用 `ai-code add admin --only NewTable,usePageList --dry-run --json` 预览，再运行添加命令。默认整套，支持 `--source-dir` 和同名冲突处理。工具只报告 UI 依赖安装命令，不改构建和入口；生成源码归项目维护，sync 不覆盖。添加后按报告补充 profile，具体用法见安装包对应技术栈的后台工具集 README。
 
 ```bash
 npm run ai:check
@@ -64,7 +66,7 @@ npx @agent-xy/ai-code quality inspect --json
 
 Vue 2 支持普通 JavaScript 脚本、data/this 和模板变量、过滤器及插槽作用域；React 支持 JSX、真实 useState 初始值与更新、对象字段及属性绑定。不承诺任意跨函数动态推导。
 
-默认按所选语言寻找 jsconfig.json 或 tsconfig.json 解析别名；也可用历史字段 `constants.tsconfig` 指定其中任一配置文件。未声明的构建工具别名不能自动猜测。
+默认按框架的固定语言寻找 jsconfig.json 或 tsconfig.json 解析别名；也可用历史字段 `constants.tsconfig` 指定其中任一配置文件。未声明的构建工具别名不能自动猜测。
 
 `not_configured` 表示未配置；`incomplete` 表示解析或配置未完成，不等于通过。外置 Vue 脚本、模板和预处理模板不在当前扫描范围内。诊断保留源文件行列，默认最多展示 5 条并保留总数。
 
