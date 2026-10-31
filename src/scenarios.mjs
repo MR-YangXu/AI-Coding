@@ -20,7 +20,7 @@ export function parseScenarios(value) {
 
 export function describeScenarios(value) {
   const selected = normalizeScenarios(value);
-  return ['通用 Vue', ...scenarioChoices.filter(choice => selected.includes(choice.id)).map(choice => `${choice.label}（${choice.id}）`)].join(' + ');
+  return ['通用规则', ...scenarioChoices.filter(choice => selected.includes(choice.id)).map(choice => `${choice.label}（${choice.id}）`)].join(' + ');
 }
 
 const scenarioPresets = [

@@ -2,13 +2,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve, relative, dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { insideProject } from './config.mjs';
+import { vue2Document } from './vue2.mjs';
+import { legacyStack, normalizeStack } from '../stack.mjs';
 
 const require = createRequire(import.meta.url);
 let ts;
 let parse;
 export function parserTools() {
   ts ??= require('typescript');
-  parse ??= require('@vue/compiler-sfc').parse;
   return { ts };
 }
 
@@ -24,6 +25,7 @@ export function nameOf(node) {
 }
 
 function vueDocument(file, original) {
+  parse ??= require('@vue/compiler-sfc').parse;
   const { descriptor, errors } = parse(original, { filename: file });
   if (errors.length) throw new Error(`${file}：Vue 解析失败：${errors.map(error => error.message ?? error).join('；')}`);
   const blocks = [descriptor.script, descriptor.scriptSetup].filter(Boolean);
@@ -73,13 +75,15 @@ function vueDocument(file, original) {
   return { text, expressions, jsx: blocks.some(block => ['jsx', 'tsx'].includes(block.lang)) };
 }
 
-export function loadSources(root, files, config) {
+export function loadSources(root, files, config, stack = legacyStack) {
+  normalizeStack(stack);
   parserTools();
   root = resolve(root);
   const documents = new Map();
   const virtuals = new Map();
   const options = { allowJs: true, checkJs: false, noLib: true, types: [], target: ts.ScriptTarget.Latest, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler, jsx: ts.JsxEmit.Preserve };
-  const configFile = resolve(root, config.tsconfig ?? 'tsconfig.json');
+  const candidates = stack.language === 'js' ? ['jsconfig.json', 'tsconfig.json'] : ['tsconfig.json', 'jsconfig.json'];
+  const configFile = resolve(root, config.tsconfig ?? candidates.find(path => existsSync(resolve(root, path))) ?? candidates[0]);
   if (config.tsconfig || existsSync(configFile)) {
     const result = ts.readConfigFile(configFile, ts.sys.readFile);
     if (result.error) throw new Error(ts.flattenDiagnosticMessageText(result.error.messageText, '\n'));
@@ -93,7 +97,8 @@ export function loadSources(root, files, config) {
     if (documents.has(file)) return documents.get(file);
     insideProject(root, file);
     const original = readFileSync(file, 'utf8');
-    const parsed = file.endsWith('.vue') ? vueDocument(relative(root, file), original) : { text: original, expressions: [] };
+    if (file.endsWith('.vue') && stack.framework === 'react') throw new Error(`${relative(root, file)}：React 扫描范围不能包含 Vue 文件`);
+    const parsed = file.endsWith('.vue') ? (stack.framework === 'vue2' ? vue2Document : vueDocument)(relative(root, file), original) : { text: original, expressions: [] };
     const virtual = file.endsWith('.vue') ? `${file}.${parsed.jsx ? 'tsx' : 'ts'}` : file;
     const document = { file, virtual, original, ...parsed };
     documents.set(file, document);
@@ -119,6 +124,86 @@ export function loadSources(root, files, config) {
   const syntaxErrors = program.getSyntacticDiagnostics();
   if (syntaxErrors.length) throw new Error(syntaxErrors.slice(0, 5).map(error => `${relative(root, error.file.fileName)}：${ts.flattenDiagnosticMessageText(error.messageText, '\n')}`).join('；'));
   const checker = program.getTypeChecker();
+  function importedName(node, moduleName) {
+    node = unwrap(node);
+    if (!node) return undefined;
+    const target = ts.isPropertyAccessExpression(node) ? node.expression : node;
+    const declarations = checker.getSymbolAtLocation(target)?.declarations ?? [];
+    for (const declaration of declarations) {
+      let current = declaration;
+      while (current && !ts.isImportDeclaration(current)) current = current.parent;
+      if (current?.moduleSpecifier.text !== moduleName) continue;
+      if (ts.isIdentifier(node) && ts.isImportSpecifier(declaration)) return nameOf(declaration.propertyName ?? declaration.name);
+      if (ts.isPropertyAccessExpression(node) && (ts.isNamespaceImport(declaration) || ts.isImportClause(declaration))) return node.name.text;
+    }
+    return undefined;
+  }
+
+  const componentCache = new Map();
+  function componentInfo(source) {
+    if (componentCache.has(source)) return componentCache.get(source);
+    const document = virtuals.get(source.fileName);
+    const members = new Map();
+    let options;
+    if (document?.componentParameters) {
+      options = unwrap(source.statements.find(ts.isExportAssignment)?.expression);
+      if (options && ts.isCallExpression(options)) options = unwrap(options.arguments[0]);
+      if (options && ts.isObjectLiteralExpression(options)) {
+        const bodyOf = prop => ts.isMethodDeclaration(prop) ? prop.body : unwrap(prop.initializer)?.body;
+        const returned = body => body && (ts.isBlock(body) ? body.statements.find(ts.isReturnStatement)?.expression : body);
+        const data = options.properties.find(prop => nameOf(prop.name) === 'data');
+        const values = unwrap(returned(data && bodyOf(data)));
+        if (values && ts.isObjectLiteralExpression(values)) for (const prop of values.properties) {
+          if (ts.isPropertyAssignment(prop)) members.set(nameOf(prop.name), prop.initializer);
+          else if (ts.isShorthandPropertyAssignment(prop)) {
+            const value = checker.getShorthandAssignmentValueSymbol(prop);
+            const declaration = value?.valueDeclaration ?? value?.declarations?.[0];
+            members.set(prop.name.text, declaration?.name ?? prop.name);
+          }
+        }
+        const computed = unwrap(options.properties.find(prop => nameOf(prop.name) === 'computed')?.initializer);
+        if (computed && ts.isObjectLiteralExpression(computed)) for (const prop of computed.properties) {
+          let body = bodyOf(prop);
+          const getter = unwrap(prop.initializer);
+          if (!body && getter && ts.isObjectLiteralExpression(getter)) body = bodyOf(getter.properties.find(item => nameOf(item.name) === 'get') ?? {});
+          const value = returned(body);
+          if (value) members.set(nameOf(prop.name), value);
+        }
+      }
+    }
+    const info = { document, members, options };
+    componentCache.set(source, info);
+    return info;
+  }
+  function componentValue(node) {
+    const source = node.getSourceFile();
+    const { document, members, options } = componentInfo(source);
+    if (!document?.componentParameters) return undefined;
+    if (ts.isIdentifier(node)) {
+      const declared = checker.getSymbolAtLocation(node)?.declarations?.[0];
+      const range = document.componentParameters;
+      if (declared && ts.isParameter(declared) && declared.name.getStart(source) >= range.start && declared.name.end <= range.end) return members.get(node.text);
+    }
+    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+      if (node.expression.kind !== ts.SyntaxKind.ThisKeyword) return undefined;
+      // 普通嵌套函数有自己的 this；箭头函数沿用最近的组件方法。
+      let owner = node.parent;
+      while (owner && !(ts.isFunctionLike(owner) && !ts.isArrowFunction(owner))) owner = owner.parent;
+      if (!owner || (!ts.isMethodDeclaration(owner) && !ts.isFunctionExpression(owner))) return undefined;
+      let container = owner.parent;
+      while (container && container !== options && (ts.isObjectLiteralExpression(container) || ts.isPropertyAssignment(container))) container = container.parent;
+      if (container === options) return members.get(ts.isPropertyAccessExpression(node) ? node.name.text : nameOf(node.argumentExpression));
+    }
+    return undefined;
+  }
+  function templateLocal(node) {
+    if (!ts.isIdentifier(node)) return false;
+    const source = node.getSourceFile();
+    const document = virtuals.get(source.fileName);
+    if (!document?.componentParameters) return false;
+    const declared = checker.getSymbolAtLocation(node)?.declarations?.[0];
+    return declared && ts.isParameter(declared) && declared.getStart(source) > document.componentParameters.end;
+  }
   function symbol(node) {
     let value = checker.getSymbolAtLocation(node);
     if (value?.flags & ts.SymbolFlags.Alias) value = checker.getAliasedSymbol(value);
@@ -137,10 +222,10 @@ export function loadSources(root, files, config) {
     const document = virtuals.get(source.fileName);
     let offset = node.getStart(source);
     const expression = document?.expressions.find(item => offset >= item.start && offset < item.end);
-    if (expression) offset = expression.offset + offset - expression.start;
+    if (expression) offset = expression.offsets?.[offset - expression.start] ?? expression.offset + offset - expression.start;
     const originalSource = document ? (document.locationSource ??= ts.createSourceFile(source.fileName, document.original, ts.ScriptTarget.Latest)) : source;
     const position = originalSource.getLineAndCharacterOfPosition(Math.min(offset, originalSource.text.length));
     return { filePath: relative(root, document?.file ?? source.fileName).replaceAll('\\', '/'), line: position.line + 1, column: position.character + 1 };
   }
-  return { program, checker, documents, virtuals, symbol, exported, resolveImport, location };
+  return { program, checker, documents, virtuals, symbol, exported, resolveImport, location, importedName, componentValue, templateLocal };
 }

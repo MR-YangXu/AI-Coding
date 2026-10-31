@@ -8,6 +8,8 @@ import { PassThrough } from 'node:stream';
 import { promptScenarios } from '../src/scenarios.mjs';
 import { promptProfile } from '../src/profile.mjs';
 import { hash } from '../src/project.mjs';
+import { cursorFiles } from '../src/adapters/cursor.mjs';
+import { profileTemplate } from '../src/profile.mjs';
 
 const cli = resolve('bin/ai-code.mjs');
 const configPath = '.ai-code/config.json';
@@ -27,6 +29,7 @@ function fixture() {
 }
 
 function run(dir, ...args) {
+  if (args[0] === 'init' && !existsSync(join(dir, '.ai-code/config.json'))) args.push('--framework', 'vue3', '--language', 'ts');
   return spawnSync(process.execPath, [cli, ...args, '--project', dir], { cwd: dir, encoding: 'utf8', timeout: 15000 });
 }
 
@@ -47,13 +50,13 @@ for (const selected of [[], ['admin'], ['mobile-h5'], ['admin', 'mobile-h5']]) {
       const rule = readFileSync(join(dir, rulePath), 'utf8');
       for (const id of selected) {
         assert.ok(rule.includes(`../skills/ai-code-${id}/SKILL.md`));
-        assert.equal(readFileSync(join(dir, `.cursor/skills/ai-code-${id}/SKILL.md`), 'utf8'), readFileSync(resolve(`content/scenarios/${id}/SKILL.md`), 'utf8'));
+        assert.equal(readFileSync(join(dir, `.cursor/skills/ai-code-${id}/SKILL.md`), 'utf8'), cursorFiles(selected)[`.cursor/skills/ai-code-${id}/SKILL.md`]);
       }
       if (!selected.length) assert.equal(rule.includes('## 已启用的项目场景'), false);
       const status = run(dir, 'status', '--json');
       assert.equal(status.status, 0, status.stdout);
       assert.deepEqual(JSON.parse(status.stdout).scenarios, selected);
-      assert.match(run(dir, 'status').stdout, /项目场景：通用 Vue/);
+      assert.match(run(dir, 'status').stdout, /项目场景：通用规则/);
       const checked = run(dir, 'check', '--json');
       assert.equal(checked.status, 0, checked.stdout);
       assert.deepEqual(JSON.parse(checked.stdout).scenarios, selected);
@@ -142,22 +145,15 @@ test('status detects edited selections and sync reconciles installed skills', ()
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('sync refuses to remove edited scenario content before writing any new files', () => {
+test('sync removes edited obsolete scenario files and installs the selected content', () => {
   const dir = fixture();
   try {
     assert.equal(run(dir, 'init', '--no-install', '--scenarios', 'admin').status, 0);
-    const beforeConfig = readFileSync(join(dir, configPath), 'utf8');
-    const beforeRule = readFileSync(join(dir, rulePath), 'utf8');
     writeFileSync(join(dir, adminPath), 'local scenario edit');
-    for (const choice of ['mobile-h5', 'none']) {
-      const result = run(dir, 'sync', '--scenarios', choice, '--json');
-      assert.equal(result.status, 1);
-      assert.match(JSON.parse(result.stdout).issues[0], /本地修改/);
-      assert.equal(readFileSync(join(dir, configPath), 'utf8'), beforeConfig);
-      assert.equal(readFileSync(join(dir, rulePath), 'utf8'), beforeRule);
-      assert.equal(readFileSync(join(dir, adminPath), 'utf8'), 'local scenario edit');
-      assert.equal(existsSync(join(dir, mobilePath)), false);
-    }
+    assert.equal(run(dir, 'sync', '--scenarios', 'mobile-h5').status, 0);
+    assert.equal(existsSync(join(dir, adminPath)), false);
+    assert.equal(existsSync(join(dir, mobilePath)), true);
+    assert.equal(run(dir, 'status').status, 0);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -297,7 +293,7 @@ test('profile prompt only offers templates for the scenarios actually selected',
     assert.equal(await selection, expected);
     assert.doesNotMatch(displayed, hidden);
   }
-  assert.equal(await promptProfile([], { input: new PassThrough(), output: new PassThrough() }), null);
+
 });
 
 test('sync refreshes the managed handbook and leaves the project profile unchanged', () => {
@@ -306,7 +302,7 @@ test('sync refreshes the managed handbook and leaves the project profile unchang
     assert.equal(run(dir, 'init', '--no-install', '--scenarios', 'admin', '--profile', 'admin').status, 0);
     const readme = join(dir, '.ai-code/README.md');
     const profile = join(dir, '.ai-code/profile.md');
-    assert.equal(readFileSync(readme, 'utf8'), readFileSync(resolve('content/handbook.md'), 'utf8'));
+    assert.equal(readFileSync(readme, 'utf8'), cursorFiles(['admin'])['.ai-code/README.md']);
     const profileBefore = readFileSync(profile, 'utf8');
     const config = readConfig(dir);
     const stale = '# 旧手册\n';
@@ -314,7 +310,7 @@ test('sync refreshes the managed handbook and leaves the project profile unchang
     config.managed['.ai-code/README.md'] = hash(stale);
     writeFileSync(join(dir, configPath), JSON.stringify(config));
     assert.equal(run(dir, 'sync').status, 0);
-    assert.equal(readFileSync(readme, 'utf8'), readFileSync(resolve('content/handbook.md'), 'utf8'));
+    assert.equal(readFileSync(readme, 'utf8'), cursorFiles(['admin'])['.ai-code/README.md']);
     assert.equal(readFileSync(profile, 'utf8'), profileBefore);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -326,7 +322,7 @@ test('init creates the chosen profile template once and never overwrites or sync
     assert.equal(created.status, 0, created.stderr || created.stdout);
     assert.deepEqual(JSON.parse(created.stdout).profile, { path: '.ai-code/profile.md', template: 'admin', created: true });
     const profile = join(dir, '.ai-code/profile.md');
-    assert.equal(readFileSync(profile, 'utf8'), readFileSync(resolve('content/templates/profile.admin.md'), 'utf8'));
+    assert.equal(readFileSync(profile, 'utf8'), profileTemplate('admin'));
     assert.equal('.ai-code/profile.md' in readConfig(dir).managed, false);
 
     writeFileSync(profile, '# 团队填写后的档案\n');

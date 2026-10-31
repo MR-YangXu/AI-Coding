@@ -1,0 +1,59 @@
+{
+  "constants": {
+    "common": {
+      "entry": "src/constants/index.js",
+      "files": [
+        "src/constants/common.js"
+      ]
+    },
+    "definitions": [
+      {
+        "id": "common.switchState",
+        "owner": "common",
+        "file": "src/constants/common.js",
+        "export": "SWITCH_STATE",
+        "dictionary": "SWITCH_STATE_DICT"
+      },
+      {
+        "id": "order.status",
+        "owner": "orders",
+        "file": "src/views/orders/constants.js",
+        "export": "ORDER_STATUS",
+        "dictionary": "ORDER_STATUS_DICT"
+      }
+    ],
+    "modules": [
+      {
+        "id": "orders",
+        "include": [
+          "src/views/orders/**/*"
+        ],
+        "bindings": [
+          {
+            "definition": "order.status",
+            "fields": [
+              "status"
+            ],
+            "options": [
+              "statusOptions",
+              "ORDER_STATUS_OPTIONS"
+            ],
+            "template": [
+              {
+                "component": "option",
+                "prop": "value",
+                "model": "query.status"
+              }
+            ]
+          },
+          {
+            "definition": "common.switchState",
+            "fields": [
+              "enabled"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

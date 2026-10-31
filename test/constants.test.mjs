@@ -288,7 +288,7 @@ test('ai:check reports observe warnings, blocks enforce violations and preserves
   const f = fixture();
   try {
     f.write('package.json', JSON.stringify({ name: 'constant-fixture', version: '1.0.0', dependencies: { vue: '^3.0.0', vite: '^5.0.0', typescript: '^5.0.0' }, scripts: Object.fromEntries(['lint', 'typecheck', 'build'].map(kind => [kind, 'node -e "process.exit(0)"'])) }));
-    const { config } = initProject(f.root, { install: false });
+    const { config } = initProject(f.root, { install: false, framework: 'vue3', language: 'ts' });
     config.constants = f.config;
     f.write('.ai-code/config.json', JSON.stringify(config));
     f.code('const status = 1;');
